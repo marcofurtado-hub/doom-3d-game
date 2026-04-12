@@ -82,7 +82,7 @@ canvas{display:block}
         <div><span id="h-time" style="color:#888">0:00</span> &nbsp; KILLS <span id="h-kills">0</span> &nbsp; HI <span class="hl" id="h-hi">0</span></div>
     </div>
     <div id="hud-bot">
-        <div id="hp-wrap"><div id="hp-label">HP 60/60</div><div id="hp-bar-bg"><div id="hp-bar"></div></div></div>
+        <div id="hp-wrap"><div id="hp-label">HP 30/30</div><div id="hp-bar-bg"><div id="hp-bar"></div></div></div>
         <div id="wave-info"></div>
     </div>
     <div id="weapon-bar">
@@ -103,11 +103,11 @@ renderer.setSize(innerWidth, innerHeight);
 renderer.setPixelRatio(Math.min(devicePixelRatio,2));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-renderer.setClearColor(0x0a0608);
+renderer.setClearColor(0x1a1218);
 document.body.prepend(renderer.domElement);
 
 const scene = new THREE.Scene();
-scene.fog = new THREE.FogExp2(0x0a0608, 0.012);
+scene.fog = new THREE.FogExp2(0x1a1218, 0.006);
 
 // Camera: perspective looking down at angle
 const camera = new THREE.PerspectiveCamera(50, innerWidth/innerHeight, 0.1, 200);
@@ -121,9 +121,9 @@ addEventListener('resize', ()=>{
 });
 
 // Lights
-const ambLight = new THREE.AmbientLight(0x1a0e10, 0.8);
+const ambLight = new THREE.AmbientLight(0x3a2e30, 1.5);
 scene.add(ambLight);
-const dirLight = new THREE.DirectionalLight(0xffe0c0, 0.6);
+const dirLight = new THREE.DirectionalLight(0xffe0c0, 1.2);
 dirLight.position.set(10, 30, 10);
 dirLight.castShadow = true;
 dirLight.shadow.mapSize.set(1024,1024);
@@ -133,7 +133,7 @@ dirLight.shadow.camera.top=22;dirLight.shadow.camera.bottom=-22;
 scene.add(dirLight);
 
 // Red point light for doom atmosphere
-const redLight = new THREE.PointLight(0xff2200, 0.3, 50);
+const redLight = new THREE.PointLight(0xff2200, 0.6, 60);
 redLight.position.set(0, 10, 0);
 scene.add(redLight);
 
@@ -175,29 +175,67 @@ mkWall(AW,WALL_H,WALL_T, 0,WALL_H/2,AH/2);  // south
 mkWall(WALL_T,WALL_H,AH, -AW/2,WALL_H/2,0);  // west
 mkWall(WALL_T,WALL_H,AH, AW/2,WALL_H/2,0);   // east
 
-// Pillars
-let pillarMeshes = [];
-function genPillars3D(){
-    pillarMeshes.forEach(m=>scene.remove(m));
-    pillarMeshes=[];pillars=[];
-    const count=5+Math.floor(Math.random()*5);
-    for(let i=0;i<count;i++){
-        let px,pz,ok,tries=0;
-        do{px=-AW/2+3+Math.random()*(AW-6);pz=-AH/2+3+Math.random()*(AH-6);
-            ok=Math.hypot(px,pz)>5;
-            for(const p of pillars)if(Math.hypot(px-p.x,pz-p.z)<5)ok=false;
-            tries++;
-        }while(!ok&&tries<30);
-        const r=0.8+Math.random()*0.8;
-        pillars.push({x:px,z:pz,r});
-        const geo=new THREE.CylinderGeometry(r,r,WALL_H,8);
-        const mat=new THREE.MeshPhongMaterial({color:0x4a2828,emissive:0x1a0808});
-        const m=new THREE.Mesh(geo,mat);
-        m.position.set(px,WALL_H/2,pz);m.castShadow=true;m.receiveShadow=true;
-        scene.add(m);pillarMeshes.push(m);
+// Inner maze walls (symmetric layouts)
+let innerWalls=[], innerWallMeshes=[];
+const MAZE_LAYOUTS=[
+    // Layout 0: Four rooms with corridors
+    [{x:8,z:0,w:1,d:8},{x:0,z:6,w:10,d:1},{x:16,z:4,w:1,d:7},{x:16,z:-4,w:1,d:7},{x:12,z:10,w:6,d:1}],
+    // Layout 1: Cross pattern with corner blocks
+    [{x:0,z:5,w:6,d:1},{x:6,z:0,w:1,d:6},{x:12,z:6,w:8,d:1},{x:18,z:0,w:1,d:8},{x:6,z:11,w:1,d:5}],
+    // Layout 2: Arena corridors
+    [{x:5,z:3,w:1,d:6},{x:10,z:0,w:1,d:4},{x:8,z:7,w:5,d:1},{x:16,z:9,w:1,d:6},{x:14,z:3,w:5,d:1},{x:0,z:10,w:4,d:1}],
+    // Layout 3: Tight maze
+    [{x:4,z:0,w:1,d:5},{x:8,z:4,w:7,d:1},{x:12,z:0,w:1,d:6},{x:0,z:8,w:6,d:1},{x:8,z:10,w:1,d:5},{x:18,z:6,w:1,d:8},{x:16,z:12,w:5,d:1}],
+];
+function genMaze3D(){
+    innerWallMeshes.forEach(m=>scene.remove(m));
+    innerWallMeshes=[];innerWalls=[];
+    const layout=MAZE_LAYOUTS[Math.floor(Math.random()*MAZE_LAYOUTS.length)];
+    const wallMat2=new THREE.MeshPhongMaterial({color:0x4a2020,emissive:0x1a0808});
+    for(const def of layout){
+        // Mirror symmetrically (4-way for non-axis, 2-way for axis walls)
+        const positions=[];
+        positions.push({x:def.x,z:def.z});
+        if(def.x!==0)positions.push({x:-def.x,z:def.z});
+        if(def.z!==0)positions.push({x:def.x,z:-def.z});
+        if(def.x!==0&&def.z!==0)positions.push({x:-def.x,z:-def.z});
+        for(const pos of positions){
+            if(Math.abs(pos.x)<3&&Math.abs(pos.z)<3)continue; // keep spawn clear
+            if(Math.abs(pos.x)+def.w/2>AW/2-2)continue;
+            if(Math.abs(pos.z)+def.d/2>AH/2-2)continue;
+            innerWalls.push({x:pos.x,z:pos.z,w:def.w,d:def.d});
+            const geo=new THREE.BoxGeometry(def.w,WALL_H,def.d);
+            const m=new THREE.Mesh(geo,wallMat2);
+            m.position.set(pos.x,WALL_H/2,pos.z);m.castShadow=true;m.receiveShadow=true;
+            scene.add(m);innerWallMeshes.push(m);
+        }
     }
 }
-let pillars=[];
+// Collision with inner walls (circle vs AABB)
+function colInnerWalls(e){
+    for(const w of innerWalls){
+        const hw=w.w/2,hd=w.d/2;
+        const cx=Math.max(w.x-hw,Math.min(e.x,w.x+hw));
+        const cz=Math.max(w.z-hd,Math.min(e.z,w.z+hd));
+        const dx=e.x-cx,dz=e.z-cz,dist=Math.hypot(dx,dz);
+        if(dist<e.r){
+            if(dist>0.001){e.x=cx+(dx/dist)*e.r;e.z=cz+(dz/dist)*e.r;}
+            else{// inside wall, push out nearest edge
+                const dL=e.x-(w.x-hw),dR=(w.x+hw)-e.x,dT=e.z-(w.z-hd),dB=(w.z+hd)-e.z;
+                const mn=Math.min(dL,dR,dT,dB);
+                if(mn===dL)e.x=w.x-hw-e.r;else if(mn===dR)e.x=w.x+hw+e.r;
+                else if(mn===dT)e.z=w.z-hd-e.r;else e.z=w.z+hd+e.r;
+            }
+        }
+    }
+}
+// Bullet vs inner wall check
+function bulletHitInnerWall(b){
+    for(const w of innerWalls){
+        const hw=w.w/2+b.sz,hd=w.d/2+b.sz;
+        if(b.x>=w.x-hw&&b.x<=w.x+hw&&b.z>=w.z-hd&&b.z<=w.z+hd)return true;
+    }return false;
+}
 
 // ===== HTML REFS =====
 const $=id=>document.getElementById(id);
@@ -329,7 +367,7 @@ let gameTime=0,paused=false,shake=0,nextBoss=0,volume=50;
 let toSpawn=0,spawnT=0,spawnRate=0,crateT=0;
 
 // Player
-const pl={x:0,z:0,r:0.5,angle:0,hp:60,maxHp:60,spd:10,wep:1,shotT:0,dmgM:1,rateM:1,dashCd:0,dashT:0,inv:0,hurtT:0};
+const pl={x:0,z:0,r:0.5,angle:0,hp:30,maxHp:30,spd:10,wep:1,shotT:0,dmgM:1,rateM:1,dashCd:0,dashT:0,inv:0,hurtT:0};
 
 // Entity arrays
 let enemies=[],bullets=[],particles=[],crates=[];
@@ -346,6 +384,27 @@ function mkSphereMesh(r,color){
     return new THREE.Mesh(geo,mat);
 }
 
+// HP Bar factory
+function mkHPBar(width){
+    const g=new THREE.Group();
+    const bgGeo=new THREE.PlaneGeometry(width,0.2);
+    const bgMat=new THREE.MeshBasicMaterial({color:0x440000,side:THREE.DoubleSide,depthTest:false,transparent:true,opacity:0.9});
+    const bg=new THREE.Mesh(bgGeo,bgMat);g.add(bg);
+    const fgGeo=new THREE.PlaneGeometry(width-0.04,0.14);
+    const fgMat=new THREE.MeshBasicMaterial({color:0x28882a,side:THREE.DoubleSide,depthTest:false});
+    const fg=new THREE.Mesh(fgGeo,fgMat);fg.position.z=0.01;g.add(fg);
+    g.rotation.x=-0.45;
+    g.hpFg=fg;g.hpW=width-0.04;
+    return g;
+}
+function updateHPBar(bar,x,y,z,ratio){
+    bar.position.set(x,y,z);
+    const r=Math.max(0,Math.min(1,ratio));
+    bar.hpFg.scale.x=r||0.001;
+    bar.hpFg.position.x=-(1-r)*bar.hpW/2;
+    bar.hpFg.material.color.setHex(r>0.5?0x28882a:r>0.25?0xc8a010:0xb02010);
+}
+
 // Player mesh
 const plGroup=new THREE.Group();
 const plBody=mkBoxMesh(1,0.6,1,0x28882a,0x0a2a0a);
@@ -357,6 +416,7 @@ const eyeL=mkBoxMesh(0.12,0.12,0.12,0xffffff);eyeL.position.set(-0.15,0.2,-0.4);
 const eyeR=mkBoxMesh(0.12,0.12,0.12,0xffffff);eyeR.position.set(0.15,0.2,-0.4);plGroup.add(eyeR);
 plGroup.position.y=0.3;
 scene.add(plGroup);
+const plHPBar=mkHPBar(1.4);scene.add(plHPBar);
 
 // ===== ENTITY FACTORIES =====
 function mkEnemy(type,x,z){
@@ -368,9 +428,10 @@ function mkEnemy(type,x,z){
     const eR=mkBoxMesh(0.1,0.1,0.1,d.eye);eR.position.set(d.r*0.3,d.r*0.15,-d.r*0.5);mesh.add(eR);
     mesh.position.set(x,0,z);mesh.scale.set(0.01,0.01,0.01);
     scene.add(mesh);
+    const hpBar=mkHPBar(d.r*2.2);scene.add(hpBar);
     return{alive:true,type,x,z,r:d.r,spd:d.spd,hp:d.hp*hpM,maxHp:d.hp*hpM,dmg:d.dmg,sc:d.sc,
         col:d.col,eye:d.eye,angle:0,ranged:d.ranged||false,fRate:d.fRate||9,shotT:0,hitT:0,kbx:0,kbz:0,
-        boss:false,spawnT:0.4,spawning:true,mesh};
+        boss:false,spawnT:0.4,spawning:true,mesh,hpBar};
 }
 
 function mkBoss(idx,x,z){
@@ -383,11 +444,12 @@ function mkBoss(idx,x,z){
     const hR=mkBoxMesh(0.2,0.6,0.2,d.col);hR.position.set(d.r*0.6,d.r*0.7,0);mesh.add(hR);
     mesh.position.set(x,0,z);mesh.scale.set(0.01,0.01,0.01);
     scene.add(mesh);
+    const hpBar=mkHPBar(d.r*2.5);scene.add(hpBar);
     return{alive:true,type:'boss',x,z,r:d.r,spd:d.spd,hp:d.hp,maxHp:d.hp,dmg:d.dmg,sc:d.sc,
         col:d.col,eye:d.eye,name:d.name,pat:d.pat,angle:0,ranged:true,fRate:d.fRate,
         shotT:0,hitT:0,kbx:0,kbz:0,boss:true,chgT:0,chgDir:0,chging:false,
         skillT:0,radialA:0,blinkT:0,divided:false,bIdx:idx,
-        spawnT:0.8,spawning:true,mesh};
+        spawnT:0.8,spawning:true,mesh,hpBar};
 }
 
 function mkBullet(x,z,a,spd,dmg,sz,color,enemy,ric=0){
@@ -418,7 +480,6 @@ function emitP(x,z,color,n,spd){
 // ===== COLLISION =====
 const HW=AW/2-WALL_T,HH=AH/2-WALL_T;
 function clampA(e){e.x=Math.max(-HW+e.r,Math.min(HW-e.r,e.x));e.z=Math.max(-HH+e.r,Math.min(HH-e.r,e.z));}
-function colPill(e){for(const p of pillars){const dx=e.x-p.x,dz=e.z-p.z,d=Math.hypot(dx,dz),m=e.r+p.r;if(d<m&&d>0){e.x=p.x+(dx/d)*m;e.z=p.z+(dz/d)*m;}}}
 function dst(a,b){return Math.hypot(a.x-b.x,a.z-b.z);}
 
 // ===== GAME FLOW =====
@@ -443,7 +504,7 @@ function startGame(){
     state='play';phase='idle';phaseT=0.5;
     waveNum=0;score=0;kills=0;combo=0;comboT=0;comboX=1;shake=0;nextBoss=0;gameTime=0;paused=false;
     $pause.style.display='none';
-    pl.x=0;pl.z=0;pl.hp=60;pl.maxHp=60;pl.spd=10;pl.wep=1;pl.shotT=0;
+    pl.x=0;pl.z=0;pl.hp=30;pl.maxHp=30;pl.spd=10;pl.wep=1;pl.shotT=0;
     pl.dmgM=1;pl.rateM=1;pl.dashCd=0;pl.dashT=0;pl.inv=0;pl.hurtT=0;
     // Clear entities
     enemies.forEach(e=>{if(e.mesh)scene.remove(e.mesh);});
@@ -453,7 +514,7 @@ function startGame(){
     enemies=[];bullets=[];particles=[];crates=[];
     for(let w=2;w<=WC;w++)ammo[w]=WEAP[w].maxAmmo;
     reloading=false;reloadT=0;
-    genPillars3D();
+    genMaze3D();
     $start.style.display='none';$over.style.display='none';$hud.style.display='block';
     $hHi.textContent=hiScore;
     if(!musInt){initAudio();startMusic();}
@@ -474,7 +535,7 @@ function startWave(){
     waveNum++;phase='spawn';
     toSpawn=12+waveNum*6;spawnRate=Math.max(0.1,0.4-waveNum*0.025);
     spawnT=0;crateT=2+Math.random()*2;
-    genPillars3D();
+    genMaze3D();
     announce('WAVE '+waveNum,toSpawn+' ENEMIES',2000);
     sfx.boss();
 }
@@ -491,7 +552,7 @@ function playerShoot(){
     const dmg=w.dmg*pl.dmgM;
     for(let i=0;i<w.count;i++){
         const sp=(Math.random()-0.5)*w.spread*2;const a=pl.angle+sp;
-        const b=mkBullet(pl.x+Math.cos(a)*0.8,pl.z+Math.sin(a)*0.8,a,w.spd,dmg,w.sz,w.color,false,w.ric||0);
+        const b=mkBullet(pl.x+Math.cos(a)*1.0,pl.z+Math.sin(a)*1.0,a,w.spd,dmg,w.sz,w.color,false,w.ric||0);
         b.expl=w.expl||false;b.fire=w.fire||false;b.blast=w.blast||0;
         bullets.push(b);
     }
@@ -511,7 +572,7 @@ function bossShoot(e,n){
 
 // ===== KILL =====
 function killEn(e){
-    e.alive=false;scene.remove(e.mesh);score+=e.sc*comboX;kills++;
+    e.alive=false;scene.remove(e.mesh);if(e.hpBar)scene.remove(e.hpBar);score+=e.sc*comboX;kills++;
     combo++;comboT=1.5;comboX=Math.min(10,1+Math.floor(combo/4));
     emitP(e.x,e.z,0x600808,8,3);emitP(e.x,e.z,e.col,5,2);sfx.kill();
     if(Math.random()<0.3){for(let w=2;w<=WC;w++)ammo[w]=Math.min(WEAP[w].maxAmmo,ammo[w]+Math.ceil(WEAP[w].maxAmmo*0.08));}
@@ -527,7 +588,7 @@ function killEn(e){
                 const child=mkBoss(ci,e.x+off,e.z);
                 child.r*=0.55;child.hp=e.maxHp*0.3;child.maxHp=child.hp;
                 child.spd*=1.4;child.dmg*=0.6;child.divided=true;child.name=e.name+' JR';
-                child.spawning=false;child.spawnT=0;child.mesh.scale.set(0.55,0.55,0.55);
+                child.spawning=false;child.spawnT=0;child.mesh.scale.set(0.55,0.55,0.55);if(child.hpBar)child.hpBar.visible=true;
                 enemies.push(child);
             }
             sfx.boss();sfx.explode();
@@ -554,7 +615,7 @@ function update(dt){
     pl.dashCd=Math.max(0,pl.dashCd-dt);
     let spd=pl.spd;if(pl.dashT>0){spd=28;pl.dashT-=dt;}
     if(dx||dz){const l=Math.hypot(dx,dz);pl.x+=(dx/l)*spd*dt;pl.z+=(dz/l)*spd*dt;}
-    clampA(pl);colPill(pl);
+    clampA(pl);colInnerWalls(pl);
 
     pl.angle=Math.atan2(mouseWorld.z-pl.z,mouseWorld.x-pl.x);
     for(let i=1;i<=WC;i++){if(keys[''+i]){pl.wep=i;reloading=false;}}
@@ -578,6 +639,7 @@ function update(dt){
     plLight.position.set(pl.x,2,pl.z);
     muzzleLight.position.set(pl.x+Math.cos(pl.angle)*1,1,pl.z+Math.sin(pl.angle)*1);
     plBody.material.color.setHex(pl.hurtT>0?0xe03818:0x28882a);
+    updateHPBar(plHPBar,pl.x,1.8,pl.z,pl.hp/pl.maxHp);
 
     // Bullets
     for(const b of bullets){
@@ -596,9 +658,13 @@ function update(dt){
             b.alive=false;scene.remove(b.mesh);continue;}
             sfx.ricochet();emitP(b.x,b.z,0xe8d040,2,2);
         }
-        // Pillar ricochet
-        for(const p of pillars){const dd=Math.hypot(b.x-p.x,b.z-p.z);
-            if(dd<p.r+b.sz&&dd>0){const nx=(b.x-p.x)/dd,nz=(b.z-p.z)/dd;const dot=b.vx*nx+b.vz*nz;b.vx-=2*dot*nx;b.vz-=2*dot*nz;b.x=p.x+nx*(p.r+b.sz+0.1);b.z=p.z+nz*(p.r+b.sz+0.1);b.bounces++;if(b.bounces>b.ric+1){b.alive=false;scene.remove(b.mesh);break;}sfx.ricochet();emitP(b.x,b.z,0xe8d040,2,2);break;}}
+        // Inner wall collision
+        if(bulletHitInnerWall(b)){
+            if(b.expl||b.fire){sfx.explode();emitP(b.x,b.z,0xd06020,8,4);shake=Math.max(shake,0.3);
+                for(const en of enemies){if(!en.alive||en.spawning)continue;const dd=dst(b,en);if(dd<b.blast){en.hp-=b.dmg*(1-dd/b.blast);en.hitT=0.08;if(en.hp<=0)killEn(en);}}}
+            else{sfx.ricochet();emitP(b.x,b.z,0xe8d040,2,2);}
+            b.alive=false;scene.remove(b.mesh);continue;
+        }
         if(!b.alive)continue;
         b.mesh.position.set(b.x,0.4,b.z);
 
@@ -624,7 +690,7 @@ function update(dt){
     // Enemies
     for(const e of enemies){
         if(!e.alive)continue;
-        if(e.spawning){e.spawnT-=dt;const t=Math.max(0,1-(e.spawnT/(e.boss?0.8:0.4)));e.mesh.scale.set(t,t,t);e.mesh.position.set(e.x,e.r*0.5*t,e.z);if(e.spawnT<=0){e.spawning=false;e.mesh.scale.set(1,1,1);}continue;}
+        if(e.spawning){e.spawnT-=dt;const t=Math.max(0,1-(e.spawnT/(e.boss?0.8:0.4)));e.mesh.scale.set(t,t,t);e.mesh.position.set(e.x,e.r*0.5*t,e.z);if(e.hpBar)e.hpBar.visible=false;if(e.spawnT<=0){e.spawning=false;e.mesh.scale.set(1,1,1);if(e.hpBar)e.hpBar.visible=true;}continue;}
         const edx=pl.x-e.x,edz=pl.z-e.z,d=Math.hypot(edx,edz);
         e.angle=Math.atan2(edz,edx);
         e.x+=e.kbx*dt;e.z+=e.kbz*dt;e.kbx*=Math.max(0,1-6*dt);e.kbz*=Math.max(0,1-6*dt);
@@ -674,13 +740,14 @@ function update(dt){
             if(d>e.r+pl.r+0.2)e.x+=(edx/d)*e.spd*dt,e.z+=(edz/d)*e.spd*dt;
             else if(pl.inv<=0){pl.hp-=e.dmg*0.8*dt;pl.hurtT=0.05;if(pl.hp<=0)die();}
         }
-        clampA(e);colPill(e);
+        clampA(e);colInnerWalls(e);
         // Push apart
         for(const o of enemies){if(o===e||!o.alive||o.spawning)continue;const dd=dst(e,o),mn=e.r+o.r;
             if(dd<mn&&dd>0){const f=(mn-dd)*0.5/dd;e.x+=(e.x-o.x)*f;e.z+=(e.z-o.z)*f;}}
         // Update mesh
         e.mesh.position.set(e.x,e.r*0.5,e.z);
-        e.mesh.rotation.y=-e.angle+Math.PI/2;
+        e.mesh.rotation.y=-e.angle-Math.PI/2;
+        if(e.hpBar)updateHPBar(e.hpBar,e.x,e.r*1.2+0.8,e.z,e.hp/e.maxHp);
         if(e.hitT>0)e.mesh.children.forEach(c=>{});// flash handled by material
     }
 
