@@ -148,7 +148,7 @@ scene.fog = new THREE.FogExp2(0x2a2230, 0.003);
 
 // Camera: perspective looking down at angle
 const camera = new THREE.PerspectiveCamera(50, innerWidth/innerHeight, 0.1, 200);
-camera.position.set(0, 38, 18);
+camera.position.set(0, 26, 13);
 camera.lookAt(0, 0, 0);
 
 addEventListener('resize', ()=>{
@@ -1213,10 +1213,11 @@ function loop(t){
     update(dt);
 
     // Camera shake
-    const basePos=new THREE.Vector3(0,38,18);
+    const px=state==='play'?pl.x:0,pz=state==='play'?pl.z:0;
+    const basePos=new THREE.Vector3(px,26,pz+13);
     if(shake>0){camera.position.set(basePos.x+(Math.random()-0.5)*shake*2,basePos.y,basePos.z+(Math.random()-0.5)*shake*2);}
     else camera.position.copy(basePos);
-    camera.lookAt(0,0,0);
+    camera.lookAt(px,0,pz);
 
     // Red atmosphere pulse
     redLight.intensity=0.8+Math.sin(t*0.002)*0.2;
