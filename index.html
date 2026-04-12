@@ -179,14 +179,38 @@ mkWall(WALL_T,WALL_H,AH, AW/2,WALL_H/2,0);   // east
 // Inner maze walls (symmetric layouts)
 let innerWalls=[], innerWallMeshes=[];
 const MAZE_LAYOUTS=[
-    // Layout 0: Four rooms with corridors
-    [{x:8,z:0,w:1,d:8},{x:0,z:6,w:10,d:1},{x:16,z:4,w:1,d:7},{x:16,z:-4,w:1,d:7},{x:12,z:10,w:6,d:1}],
-    // Layout 1: Cross pattern with corner blocks
-    [{x:0,z:5,w:6,d:1},{x:6,z:0,w:1,d:6},{x:12,z:6,w:8,d:1},{x:18,z:0,w:1,d:8},{x:6,z:11,w:1,d:5}],
-    // Layout 2: Arena corridors
-    [{x:5,z:3,w:1,d:6},{x:10,z:0,w:1,d:4},{x:8,z:7,w:5,d:1},{x:16,z:9,w:1,d:6},{x:14,z:3,w:5,d:1},{x:0,z:10,w:4,d:1}],
-    // Layout 3: Tight maze
-    [{x:4,z:0,w:1,d:5},{x:8,z:4,w:7,d:1},{x:12,z:0,w:1,d:6},{x:0,z:8,w:6,d:1},{x:8,z:10,w:1,d:5},{x:18,z:6,w:1,d:8},{x:16,z:12,w:5,d:1}],
+    // Layout 0: Open L-shapes - walls don't connect to form boxes
+    [
+        {x:7,z:0,w:1,d:6},   // vertical near center
+        {x:14,z:5,w:6,d:1},  // horizontal arm top-right
+        {x:14,z:-5,w:6,d:1}, // horizontal arm bottom-right (explicit, not mirrored z)
+        {x:0,z:9,w:8,d:1},   // horizontal bar top center
+        {x:20,z:0,w:1,d:5},  // vertical far right
+    ],
+    // Layout 1: Staggered corridors - open ends
+    [
+        {x:5,z:4,w:1,d:5},   // short vert left
+        {x:12,z:0,w:1,d:7},  // tall vert mid
+        {x:9,z:8,w:5,d:1},   // horizontal top
+        {x:19,z:5,w:1,d:5},  // vert far
+        {x:0,z:12,w:5,d:1},  // horizontal top-center
+    ],
+    // Layout 2: Scattered barriers
+    [
+        {x:6,z:0,w:6,d:1},   // horizontal center-left
+        {x:15,z:0,w:1,d:4},  // short vert right
+        {x:10,z:6,w:1,d:5},  // vert mid-top
+        {x:0,z:10,w:5,d:1},  // horizontal bar far top
+        {x:20,z:8,w:4,d:1},  // horizontal corner
+    ],
+    // Layout 3: Wide corridors with pillars
+    [
+        {x:0,z:5,w:8,d:1},   // wide horizontal top
+        {x:8,z:0,w:1,d:4},   // short vert
+        {x:16,z:3,w:1,d:7},  // tall vert right
+        {x:10,z:10,w:6,d:1}, // horizontal far top
+        {x:21,z:0,w:2,d:2},  // pillar far corner
+    ],
 ];
 function genMaze3D(){
     innerWallMeshes.forEach(m=>scene.remove(m));
@@ -523,7 +547,6 @@ function startWave(){
     waveNum++;phase='spawn';
     toSpawn=12+waveNum*6;spawnRate=Math.max(0.1,0.4-waveNum*0.025);
     spawnT=0;crateT=2+Math.random()*2;
-    genMaze3D();
     announce('WAVE '+waveNum,toSpawn+' ENEMIES',2000);
     sfx.boss();
 }
@@ -604,10 +627,32 @@ function bossShoot(e,n){
 }
 
 // ===== KILL =====
+function bloodExplosion(x,z,r){
+    // Massive blood burst
+    const colors=[0x880000,0xaa0000,0xcc1111,0x660000,0x440000,0xff0000,0x990808];
+    const n=25+Math.floor(r*15);
+    for(let i=0;i<n;i++){
+        const a=Math.random()*Math.PI*2,s=1+Math.random()*6;
+        const sz=0.04+Math.random()*0.12;
+        const col=colors[Math.floor(Math.random()*colors.length)];
+        const mesh=mkSphereMesh(sz,col);
+        mesh.position.set(x+(Math.random()-0.5)*r,0.2+Math.random()*1.2,z+(Math.random()-0.5)*r);
+        scene.add(mesh);
+        particles.push({alive:true,mesh,vx:Math.cos(a)*s,vy:2+Math.random()*5,vz:Math.sin(a)*s,life:0.5+Math.random()*0.6,ml:0.5+Math.random()*0.6});
+    }
+    // Body chunk pieces (bigger parts)
+    for(let i=0;i<4+Math.floor(r*3);i++){
+        const a=Math.random()*Math.PI*2,s=1+Math.random()*4;
+        const mesh=mkBoxMesh(0.15+Math.random()*0.15,0.1+Math.random()*0.1,0.15+Math.random()*0.15,colors[Math.floor(Math.random()*3)]);
+        mesh.position.set(x,0.3+Math.random()*0.5,z);scene.add(mesh);
+        particles.push({alive:true,mesh,vx:Math.cos(a)*s,vy:3+Math.random()*4,vz:Math.sin(a)*s,life:0.6+Math.random()*0.5,ml:0.6+Math.random()*0.5});
+    }
+}
+
 function killEn(e){
     e.alive=false;scene.remove(e.mesh);score+=e.sc*comboX;kills++;
     combo++;comboT=1.5;comboX=Math.min(10,1+Math.floor(combo/4));
-    emitP(e.x,e.z,0x600808,8,3);emitP(e.x,e.z,e.col,5,2);sfx.kill();
+    bloodExplosion(e.x,e.z,e.r);sfx.kill();sfx.explode();
     if(Math.random()<0.3){for(let w=2;w<=WC;w++)ammo[w]=Math.min(WEAP[w].maxAmmo,ammo[w]+Math.ceil(WEAP[w].maxAmmo*0.08));}
     if(e.boss){
         shake=0.6;emitP(e.x,e.z,0xd06020,15,5);emitP(e.x,e.z,0xe8d040,10,4);sfx.explode();
