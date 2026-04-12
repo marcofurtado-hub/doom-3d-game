@@ -50,7 +50,7 @@ canvas{display:block}
     <h1>DOOM 3D</h1>
     <p>
         WASD - Mover &nbsp; Mouse - Mirar &nbsp; Click - Atirar<br>
-        1-7: Pistol, Shotgun, Chaingun, Rocket, Plasma, Bomb, Molotov<br>
+        1-9: Pistol, Shotgun, Chaingun, Rocket, Plasma, Bomb, Molotov, Laser, Mega Bomb<br>
         Shift - Dash &nbsp; R - Recarregar &nbsp; ESC - Pause<br>
         Atire nos crates: arma ou munição<br>
         SEM CURA - Roguelike: morra e recomece
@@ -88,6 +88,7 @@ canvas{display:block}
     <div id="weapon-bar">
         <div class="wep active" id="w1">[1]PIS</div><div class="wep" id="w2">[2]SG</div><div class="wep" id="w3">[3]CG</div>
         <div class="wep" id="w4">[4]RL</div><div class="wep" id="w5">[5]PL</div><div class="wep" id="w6">[6]BM</div><div class="wep" id="w7">[7]ML</div>
+        <div class="wep" id="w8">[8]LAS</div><div class="wep" id="w9">[9]MB</div>
     </div>
     <div id="ammo-info"></div>
 </div>
@@ -103,11 +104,11 @@ renderer.setSize(innerWidth, innerHeight);
 renderer.setPixelRatio(Math.min(devicePixelRatio,2));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-renderer.setClearColor(0x1a1218);
+renderer.setClearColor(0x2a2230);
 document.body.prepend(renderer.domElement);
 
 const scene = new THREE.Scene();
-scene.fog = new THREE.FogExp2(0x1a1218, 0.006);
+scene.fog = new THREE.FogExp2(0x2a2230, 0.003);
 
 // Camera: perspective looking down at angle
 const camera = new THREE.PerspectiveCamera(50, innerWidth/innerHeight, 0.1, 200);
@@ -121,9 +122,9 @@ addEventListener('resize', ()=>{
 });
 
 // Lights
-const ambLight = new THREE.AmbientLight(0x3a2e30, 1.5);
+const ambLight = new THREE.AmbientLight(0x605060, 2.5);
 scene.add(ambLight);
-const dirLight = new THREE.DirectionalLight(0xffe0c0, 1.2);
+const dirLight = new THREE.DirectionalLight(0xfff0e0, 2.0);
 dirLight.position.set(10, 30, 10);
 dirLight.castShadow = true;
 dirLight.shadow.mapSize.set(1024,1024);
@@ -133,7 +134,7 @@ dirLight.shadow.camera.top=22;dirLight.shadow.camera.bottom=-22;
 scene.add(dirLight);
 
 // Red point light for doom atmosphere
-const redLight = new THREE.PointLight(0xff2200, 0.6, 60);
+const redLight = new THREE.PointLight(0xff4422, 1.0, 80);
 redLight.position.set(0, 10, 0);
 scene.add(redLight);
 
@@ -153,7 +154,7 @@ const WALL_H = 3, WALL_T = 1.5;
 
 // Floor
 const floorGeo = new THREE.PlaneGeometry(AW, AH, 20, 14);
-const floorMat = new THREE.MeshLambertMaterial({color:0x1c1210});
+const floorMat = new THREE.MeshLambertMaterial({color:0x3a2e28});
 const floor = new THREE.Mesh(floorGeo, floorMat);
 floor.rotation.x = -Math.PI/2;
 floor.receiveShadow = true;
@@ -165,7 +166,7 @@ gridHelper.position.y = 0.01;
 scene.add(gridHelper);
 
 // Walls
-const wallMat = new THREE.MeshPhongMaterial({color:0x3a2020, emissive:0x1a0808});
+const wallMat = new THREE.MeshPhongMaterial({color:0x5a3838, emissive:0x2a1414});
 function mkWall(w,h,d,x,y,z){
     const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d), wallMat);
     m.position.set(x,y,z);m.castShadow=true;m.receiveShadow=true;scene.add(m);return m;
@@ -191,7 +192,7 @@ function genMaze3D(){
     innerWallMeshes.forEach(m=>scene.remove(m));
     innerWallMeshes=[];innerWalls=[];
     const layout=MAZE_LAYOUTS[Math.floor(Math.random()*MAZE_LAYOUTS.length)];
-    const wallMat2=new THREE.MeshPhongMaterial({color:0x4a2020,emissive:0x1a0808});
+    const wallMat2=new THREE.MeshPhongMaterial({color:0x6a3838,emissive:0x2a1414});
     for(const def of layout){
         // Mirror symmetrically (4-way for non-axis, 2-way for axis walls)
         const positions=[];
@@ -229,11 +230,18 @@ function colInnerWalls(e){
         }
     }
 }
-// Bullet vs inner wall check
-function bulletHitInnerWall(b){
+// Bullet vs inner wall - ricochet
+function bulletBounceInnerWall(b){
     for(const w of innerWalls){
         const hw=w.w/2+b.sz,hd=w.d/2+b.sz;
-        if(b.x>=w.x-hw&&b.x<=w.x+hw&&b.z>=w.z-hd&&b.z<=w.z+hd)return true;
+        if(b.x>=w.x-hw&&b.x<=w.x+hw&&b.z>=w.z-hd&&b.z<=w.z+hd){
+            // Find closest edge to bounce off
+            const dL=b.x-(w.x-hw),dR=(w.x+hw)-b.x,dT=b.z-(w.z-hd),dB=(w.z+hd)-b.z;
+            const mn=Math.min(dL,dR,dT,dB);
+            if(mn===dL||mn===dR){b.vx=-b.vx;b.x=mn===dL?w.x-hw-0.01:w.x+hw+0.01;}
+            else{b.vz=-b.vz;b.z=mn===dT?w.z-hd-0.01:w.z+hd+0.01;}
+            return true;
+        }
     }return false;
 }
 
@@ -245,7 +253,7 @@ const $hCombo=$('h-combo'),$waveInfo=$('wave-info'),$hpLabel=$('hp-label'),$hpBa
 const $ann=$('announce'),$annH1=$ann.querySelector('h1'),$annH2=$ann.querySelector('h2');
 const $ammo=$('ammo-info'),$pause=$('pause-screen');
 const $goStats=$('go-stats'),$goRank=$('go-ranking'),$goName=$('go-name'),$goInput=$('go-input');
-const $w={};for(let i=1;i<=7;i++)$w[i]=$('w'+i);
+const $w={};for(let i=1;i<=9;i++)$w[i]=$('w'+i);
 
 function announce(t,s,d){$annH1.textContent=t;$annH2.textContent=s||'';$ann.style.opacity='1';setTimeout(()=>$ann.style.opacity='0',d||2000);}
 
@@ -286,6 +294,8 @@ const sfx={
     explode:()=>{noise(0.35,0.2);beep(60,0.3,'sawtooth',0.12);beep(30,0.4,'square',0.08);},
     dash:()=>{beep(500,0.04,'sine',0.04);beep(800,0.03,'sine',0.03);},
     ricochet:()=>{noise(0.06,0.08);beep(3000+Math.random()*2000,0.03,'sine',0.03);beep(100+Math.random()*60,0.08,'sine',0.04);},
+    laser:()=>{beep(1200,0.04,'sine',0.06);beep(1600,0.03,'sine',0.04);},
+    megabomb:()=>{noise(0.5,0.25);beep(30,0.6,'sawtooth',0.2);beep(20,0.7,'square',0.15);},
 };
 
 // ===== MUSIC (dynamic normal/boss) =====
@@ -323,9 +333,11 @@ const WEAP={
     5:{name:'PLASMA',rate:0.08,dmg:14,spd:36,spread:0.04,count:1,sz:0.14,color:0x30a0b0,sfx:'plasma',maxAmmo:80,rTime:1.0,ric:4},
     6:{name:'BOMB',rate:1.0,dmg:140,spd:14,spread:0.02,count:1,sz:0.25,color:0xe8d040,sfx:'bomb',maxAmmo:6,rTime:1.8,ric:0,expl:true,blast:5.5},
     7:{name:'MOLOTOV',rate:0.9,dmg:70,spd:16,spread:0.03,count:1,sz:0.2,color:0xd06020,sfx:'molotov',maxAmmo:8,rTime:1.3,ric:0,fire:true,blast:3.5},
+    8:{name:'LASER',rate:0.02,dmg:6,spd:60,spread:0.01,count:1,sz:0.08,color:0xff2020,sfx:'laser',maxAmmo:200,rTime:0.8,ric:6,laser:true},
+    9:{name:'MEGA BOMB',rate:2.0,dmg:300,spd:10,spread:0.01,count:1,sz:0.4,color:0xff4400,sfx:'megabomb',maxAmmo:3,rTime:2.5,ric:0,expl:true,blast:9},
 };
-const WC=7;
-const ammo={2:28,3:150,4:12,5:80,6:6,7:8};
+const WC=9;
+const ammo={2:28,3:150,4:12,5:80,6:6,7:8,8:200,9:3};
 let reloading=false,reloadT=0;
 
 const EDEF={
@@ -384,27 +396,6 @@ function mkSphereMesh(r,color){
     return new THREE.Mesh(geo,mat);
 }
 
-// HP Bar factory
-function mkHPBar(width){
-    const g=new THREE.Group();
-    const bgGeo=new THREE.PlaneGeometry(width,0.2);
-    const bgMat=new THREE.MeshBasicMaterial({color:0x440000,side:THREE.DoubleSide,depthTest:false,transparent:true,opacity:0.9});
-    const bg=new THREE.Mesh(bgGeo,bgMat);g.add(bg);
-    const fgGeo=new THREE.PlaneGeometry(width-0.04,0.14);
-    const fgMat=new THREE.MeshBasicMaterial({color:0x28882a,side:THREE.DoubleSide,depthTest:false});
-    const fg=new THREE.Mesh(fgGeo,fgMat);fg.position.z=0.01;g.add(fg);
-    g.rotation.x=-0.45;
-    g.hpFg=fg;g.hpW=width-0.04;
-    return g;
-}
-function updateHPBar(bar,x,y,z,ratio){
-    bar.position.set(x,y,z);
-    const r=Math.max(0,Math.min(1,ratio));
-    bar.hpFg.scale.x=r||0.001;
-    bar.hpFg.position.x=-(1-r)*bar.hpW/2;
-    bar.hpFg.material.color.setHex(r>0.5?0x28882a:r>0.25?0xc8a010:0xb02010);
-}
-
 // Player mesh
 const plGroup=new THREE.Group();
 const plBody=mkBoxMesh(1,0.6,1,0x28882a,0x0a2a0a);
@@ -416,7 +407,6 @@ const eyeL=mkBoxMesh(0.12,0.12,0.12,0xffffff);eyeL.position.set(-0.15,0.2,-0.4);
 const eyeR=mkBoxMesh(0.12,0.12,0.12,0xffffff);eyeR.position.set(0.15,0.2,-0.4);plGroup.add(eyeR);
 plGroup.position.y=0.3;
 scene.add(plGroup);
-const plHPBar=mkHPBar(1.4);scene.add(plHPBar);
 
 // ===== ENTITY FACTORIES =====
 function mkEnemy(type,x,z){
@@ -428,10 +418,9 @@ function mkEnemy(type,x,z){
     const eR=mkBoxMesh(0.1,0.1,0.1,d.eye);eR.position.set(d.r*0.3,d.r*0.15,-d.r*0.5);mesh.add(eR);
     mesh.position.set(x,0,z);mesh.scale.set(0.01,0.01,0.01);
     scene.add(mesh);
-    const hpBar=mkHPBar(d.r*2.2);scene.add(hpBar);
     return{alive:true,type,x,z,r:d.r,spd:d.spd,hp:d.hp*hpM,maxHp:d.hp*hpM,dmg:d.dmg,sc:d.sc,
         col:d.col,eye:d.eye,angle:0,ranged:d.ranged||false,fRate:d.fRate||9,shotT:0,hitT:0,kbx:0,kbz:0,
-        boss:false,spawnT:0.4,spawning:true,mesh,hpBar};
+        boss:false,spawnT:0.4,spawning:true,mesh};
 }
 
 function mkBoss(idx,x,z){
@@ -444,12 +433,11 @@ function mkBoss(idx,x,z){
     const hR=mkBoxMesh(0.2,0.6,0.2,d.col);hR.position.set(d.r*0.6,d.r*0.7,0);mesh.add(hR);
     mesh.position.set(x,0,z);mesh.scale.set(0.01,0.01,0.01);
     scene.add(mesh);
-    const hpBar=mkHPBar(d.r*2.5);scene.add(hpBar);
     return{alive:true,type:'boss',x,z,r:d.r,spd:d.spd,hp:d.hp,maxHp:d.hp,dmg:d.dmg,sc:d.sc,
         col:d.col,eye:d.eye,name:d.name,pat:d.pat,angle:0,ranged:true,fRate:d.fRate,
         shotT:0,hitT:0,kbx:0,kbz:0,boss:true,chgT:0,chgDir:0,chging:false,
         skillT:0,radialA:0,blinkT:0,divided:false,bIdx:idx,
-        spawnT:0.8,spawning:true,mesh,hpBar};
+        spawnT:0.8,spawning:true,mesh};
 }
 
 function mkBullet(x,z,a,spd,dmg,sz,color,enemy,ric=0){
@@ -545,17 +533,62 @@ function getTypes(){
 }
 
 // ===== SHOOTING =====
+let laserBeams=[];
+function mkLaserBeam(x1,z1,x2,z2){
+    const pts=[new THREE.Vector3(x1,0.5,z1),new THREE.Vector3(x2,0.5,z2)];
+    const geo=new THREE.BufferGeometry().setFromPoints(pts);
+    const mat=new THREE.LineBasicMaterial({color:0xff2020,linewidth:2});
+    const line=new THREE.Line(geo,mat);scene.add(line);
+    laserBeams.push({mesh:line,life:0.06});
+}
+
 function playerShoot(){
     const w=WEAP[pl.wep];
     pl.shotT=w.rate*pl.rateM;sfx[w.sfx]();shake=Math.max(shake,w.sz>0.15?0.3:0.1);
     muzzleLight.intensity=3;setTimeout(()=>muzzleLight.intensity=0,50);
     const dmg=w.dmg*pl.dmgM;
+
+    if(w.laser){
+        // Continuous laser beam - raycast through enemies
+        const a=pl.angle;const sx=pl.x+Math.cos(a)*1.0,sz=pl.z+Math.sin(a)*1.0;
+        let ex=sx+Math.cos(a)*60,ez=sz+Math.sin(a)*60;
+        // Clamp to arena walls
+        const steps=120;const dx=Math.cos(a)*0.5,dz=Math.sin(a)*0.5;
+        let cx=sx,cz=sz;
+        for(let i=0;i<steps;i++){
+            cx+=dx;cz+=dz;
+            if(cx<-HW||cx>HW||cz<-HH||cz>HH){ex=cx;ez=cz;break;}
+            // Check inner walls
+            let hitWall=false;
+            for(const wl of innerWalls){const hw=wl.w/2,hd=wl.d/2;
+                if(cx>=wl.x-hw&&cx<=wl.x+hw&&cz>=wl.z-hd&&cz<=wl.z+hd){hitWall=true;break;}}
+            if(hitWall){ex=cx;ez=cz;break;}
+        }
+        // Damage all enemies along the beam
+        for(const e of enemies){if(!e.alive||e.spawning)continue;
+            // Point-to-line distance
+            const lx=ex-sx,lz=ez-sz,len=Math.hypot(lx,lz);
+            if(len<0.1)continue;
+            const t=Math.max(0,Math.min(1,((e.x-sx)*lx+(e.z-sz)*lz)/(len*len)));
+            const px=sx+t*lx,pz=sz+t*lz;
+            if(Math.hypot(e.x-px,e.z-pz)<e.r+0.2){
+                e.hp-=dmg;e.hitT=0.04;emitP(e.x,e.z,0xff2020,1,1);
+                if(e.hp<=0)killEn(e);
+            }
+        }
+        mkLaserBeam(sx,sz,ex,ez);
+        emitP(ex,ez,0xff2020,2,1);
+        muzzleLight.color.setHex(0xff2020);
+        return;
+    }
+
     for(let i=0;i<w.count;i++){
         const sp=(Math.random()-0.5)*w.spread*2;const a=pl.angle+sp;
         const b=mkBullet(pl.x+Math.cos(a)*1.0,pl.z+Math.sin(a)*1.0,a,w.spd,dmg,w.sz,w.color,false,w.ric||0);
         b.expl=w.expl||false;b.fire=w.fire||false;b.blast=w.blast||0;
         bullets.push(b);
     }
+    muzzleLight.color.setHex(0xe8c020);
 }
 
 function enShoot(e){
@@ -572,7 +605,7 @@ function bossShoot(e,n){
 
 // ===== KILL =====
 function killEn(e){
-    e.alive=false;scene.remove(e.mesh);if(e.hpBar)scene.remove(e.hpBar);score+=e.sc*comboX;kills++;
+    e.alive=false;scene.remove(e.mesh);score+=e.sc*comboX;kills++;
     combo++;comboT=1.5;comboX=Math.min(10,1+Math.floor(combo/4));
     emitP(e.x,e.z,0x600808,8,3);emitP(e.x,e.z,e.col,5,2);sfx.kill();
     if(Math.random()<0.3){for(let w=2;w<=WC;w++)ammo[w]=Math.min(WEAP[w].maxAmmo,ammo[w]+Math.ceil(WEAP[w].maxAmmo*0.08));}
@@ -588,7 +621,7 @@ function killEn(e){
                 const child=mkBoss(ci,e.x+off,e.z);
                 child.r*=0.55;child.hp=e.maxHp*0.3;child.maxHp=child.hp;
                 child.spd*=1.4;child.dmg*=0.6;child.divided=true;child.name=e.name+' JR';
-                child.spawning=false;child.spawnT=0;child.mesh.scale.set(0.55,0.55,0.55);if(child.hpBar)child.hpBar.visible=true;
+                child.spawning=false;child.spawnT=0;child.mesh.scale.set(0.55,0.55,0.55);
                 enemies.push(child);
             }
             sfx.boss();sfx.explode();
@@ -639,7 +672,6 @@ function update(dt){
     plLight.position.set(pl.x,2,pl.z);
     muzzleLight.position.set(pl.x+Math.cos(pl.angle)*1,1,pl.z+Math.sin(pl.angle)*1);
     plBody.material.color.setHex(pl.hurtT>0?0xe03818:0x28882a);
-    updateHPBar(plHPBar,pl.x,1.8,pl.z,pl.hp/pl.maxHp);
 
     // Bullets
     for(const b of bullets){
@@ -658,12 +690,14 @@ function update(dt){
             b.alive=false;scene.remove(b.mesh);continue;}
             sfx.ricochet();emitP(b.x,b.z,0xe8d040,2,2);
         }
-        // Inner wall collision
-        if(bulletHitInnerWall(b)){
+        // Inner wall ricochet
+        if(bulletBounceInnerWall(b)){
             if(b.expl||b.fire){sfx.explode();emitP(b.x,b.z,0xd06020,8,4);shake=Math.max(shake,0.3);
                 for(const en of enemies){if(!en.alive||en.spawning)continue;const dd=dst(b,en);if(dd<b.blast){en.hp-=b.dmg*(1-dd/b.blast);en.hitT=0.08;if(en.hp<=0)killEn(en);}}}
-            else{sfx.ricochet();emitP(b.x,b.z,0xe8d040,2,2);}
-            b.alive=false;scene.remove(b.mesh);continue;
+                b.alive=false;scene.remove(b.mesh);continue;
+            }
+            b.bounces++;if(b.bounces>b.ric){b.alive=false;scene.remove(b.mesh);continue;}
+            sfx.ricochet();emitP(b.x,b.z,0xe8d040,2,2);
         }
         if(!b.alive)continue;
         b.mesh.position.set(b.x,0.4,b.z);
@@ -690,7 +724,7 @@ function update(dt){
     // Enemies
     for(const e of enemies){
         if(!e.alive)continue;
-        if(e.spawning){e.spawnT-=dt;const t=Math.max(0,1-(e.spawnT/(e.boss?0.8:0.4)));e.mesh.scale.set(t,t,t);e.mesh.position.set(e.x,e.r*0.5*t,e.z);if(e.hpBar)e.hpBar.visible=false;if(e.spawnT<=0){e.spawning=false;e.mesh.scale.set(1,1,1);if(e.hpBar)e.hpBar.visible=true;}continue;}
+        if(e.spawning){e.spawnT-=dt;const t=Math.max(0,1-(e.spawnT/(e.boss?0.8:0.4)));e.mesh.scale.set(t,t,t);e.mesh.position.set(e.x,e.r*0.5*t,e.z);if(e.spawnT<=0){e.spawning=false;e.mesh.scale.set(1,1,1);}continue;}
         const edx=pl.x-e.x,edz=pl.z-e.z,d=Math.hypot(edx,edz);
         e.angle=Math.atan2(edz,edx);
         e.x+=e.kbx*dt;e.z+=e.kbz*dt;e.kbx*=Math.max(0,1-6*dt);e.kbz*=Math.max(0,1-6*dt);
@@ -747,7 +781,6 @@ function update(dt){
         // Update mesh
         e.mesh.position.set(e.x,e.r*0.5,e.z);
         e.mesh.rotation.y=-e.angle-Math.PI/2;
-        if(e.hpBar)updateHPBar(e.hpBar,e.x,e.r*1.2+0.8,e.z,e.hp/e.maxHp);
         if(e.hitT>0)e.mesh.children.forEach(c=>{});// flash handled by material
     }
 
@@ -755,6 +788,9 @@ function update(dt){
     for(const cr of crates){if(!cr.alive)continue;cr.spawnT=Math.max(0,cr.spawnT-dt);cr.t+=dt*2;
         const t=Math.max(0,1-(cr.spawnT/0.3));cr.mesh.scale.set(t,t,t);
         cr.mesh.position.set(cr.x,0.4+Math.sin(cr.t)*0.1,cr.z);cr.mesh.rotation.y+=dt;}
+
+    // Laser beams cleanup
+    for(let i=laserBeams.length-1;i>=0;i--){laserBeams[i].life-=dt;if(laserBeams[i].life<=0){scene.remove(laserBeams[i].mesh);laserBeams.splice(i,1);}}
 
     // Particles
     for(const p of particles){if(!p.alive)continue;p.mesh.position.x+=p.vx*dt;p.mesh.position.y+=p.vy*dt;p.vy-=8*dt;p.mesh.position.z+=p.vz*dt;
@@ -798,7 +834,7 @@ function updateHUD(){
     $hpLabel.textContent='HP '+Math.ceil(pl.hp)+'/'+pl.maxHp;
     $hpBar.style.width=Math.max(0,pl.hp/pl.maxHp*100)+'%';
     $hpBar.style.background=pl.hp/pl.maxHp>0.5?'#28882a':pl.hp/pl.maxHp>0.25?'#c8a010':'#b02010';
-    const wN={1:'PIS',2:'SG',3:'CG',4:'RL',5:'PL',6:'BM',7:'ML'};
+    const wN={1:'PIS',2:'SG',3:'CG',4:'RL',5:'PL',6:'BM',7:'ML',8:'LAS',9:'MB'};
     for(let i=1;i<=WC;i++){$w[i].textContent='['+i+']'+wN[i]+(i>1?' '+ammo[i]:'');$w[i].className=pl.wep===i?'wep active':'wep';}
     $ammo.textContent=pl.wep===1?'':(reloading?'RELOADING...':WEAP[pl.wep].name+' '+ammo[pl.wep]+'/'+WEAP[pl.wep].maxAmmo);
     if(phase==='spawn'||phase==='fight'){$waveInfo.textContent='ENEMIES: '+(enemies.filter(e=>e.alive&&!e.boss).length+toSpawn);$waveInfo.style.color='#e03818';}
@@ -821,7 +857,7 @@ function loop(t){
     camera.lookAt(0,0,0);
 
     // Red atmosphere pulse
-    redLight.intensity=0.3+Math.sin(t*0.002)*0.1;
+    redLight.intensity=0.8+Math.sin(t*0.002)*0.2;
 
     renderer.render(scene,camera);
     requestAnimationFrame(loop);
