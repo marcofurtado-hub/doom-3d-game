@@ -574,7 +574,7 @@ function update(dt){
 
     // Update player mesh
     plGroup.position.set(pl.x,0.3,pl.z);
-    plGroup.rotation.y=-pl.angle+Math.PI/2;
+    plGroup.rotation.y=-pl.angle-Math.PI/2;
     plLight.position.set(pl.x,2,pl.z);
     muzzleLight.position.set(pl.x+Math.cos(pl.angle)*1,1,pl.z+Math.sin(pl.angle)*1);
     plBody.material.color.setHex(pl.hurtT>0?0xe03818:0x28882a);
