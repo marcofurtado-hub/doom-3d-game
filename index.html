@@ -42,6 +42,8 @@ canvas{display:block}
 #pause-screen h1{font-size:48px;color:#e8c020}
 #pause-screen p{color:#888;font-size:14px;margin-top:12px;line-height:2}
 #pause-screen span{color:#e03818;cursor:pointer;pointer-events:auto}
+#hurt-vignette{position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:9;opacity:0;
+    background:radial-gradient(ellipse at center,transparent 40%,rgba(180,0,0,0.7) 100%);transition:opacity 0.05s}
 </style>
 </head>
 <body>
@@ -93,6 +95,7 @@ canvas{display:block}
     <div id="ammo-info"></div>
 </div>
 <div id="announce"><h1></h1><h2></h2></div>
+<div id="hurt-vignette"></div>
 
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"}}</script>
 <script type="module">
@@ -275,7 +278,7 @@ const $start=$('start-screen'),$over=$('game-over'),$hud=$('hud');
 const $hWave=$('h-wave'),$hScore=$('h-score'),$hKills=$('h-kills'),$hHi=$('h-hi'),$hTime=$('h-time');
 const $hCombo=$('h-combo'),$waveInfo=$('wave-info'),$hpLabel=$('hp-label'),$hpBar=$('hp-bar');
 const $ann=$('announce'),$annH1=$ann.querySelector('h1'),$annH2=$ann.querySelector('h2');
-const $ammo=$('ammo-info'),$pause=$('pause-screen');
+const $ammo=$('ammo-info'),$pause=$('pause-screen'),$hurtVig=$('hurt-vignette');
 const $goStats=$('go-stats'),$goRank=$('go-ranking'),$goName=$('go-name'),$goInput=$('go-input');
 const $w={};for(let i=1;i<=9;i++)$w[i]=$('w'+i);
 
@@ -874,6 +877,7 @@ function update(dt){
     }
 
     pl.inv=Math.max(0,pl.inv-dt);pl.hurtT=Math.max(0,pl.hurtT-dt);
+    $hurtVig.style.opacity=pl.hurtT>0?Math.min(1,pl.hurtT*8):0;
     if(shake>0)shake=Math.max(0,shake-dt*3);
     if(comboT>0){comboT-=dt;if(comboT<=0){combo=0;comboX=1;}}
 
