@@ -173,17 +173,20 @@ scene.add(redLight);
 const plLight = new THREE.PointLight(0x000000, 0, 1);scene.add(plLight);
 const muzzleLight = new THREE.PointLight(0x000000, 0, 1);scene.add(muzzleLight);
 
-// SIMPLIFIED: hard-edge flashlight only, no fade/halo/bounces
-const flashlight = new THREE.SpotLight(0xffffff, 4, 24, Math.PI/5, 0, 0);
-flashlight.position.set(0, 1.6, 0);
+// HARD FLASHLIGHT - saturating intensity + hard edges
+// Placed high + angled to flatten the Lambert gradient inside the cone
+const flashlight = new THREE.SpotLight(0xffffff, 40, 22, Math.PI/7, 0, 0);
+flashlight.position.set(0, 8, 0);
 flashlight.target = new THREE.Object3D();
 scene.add(flashlight);
 scene.add(flashlight.target);
 
 function updateFlashlight(){
     const fdx=Math.cos(pl.angle), fdz=Math.sin(pl.angle);
-    flashlight.position.set(pl.x, 1.6, pl.z);
-    flashlight.target.position.set(pl.x+fdx*10, 1.0, pl.z+fdz*10);
+    // Light source high above so the beam hits the floor more top-down
+    // -> Lambert cosine is closer to 1 across the whole cone
+    flashlight.position.set(pl.x + fdx*2, 8, pl.z + fdz*2);
+    flashlight.target.position.set(pl.x + fdx*12, 0, pl.z + fdz*12);
 }
 
 // Stubbed FX (no-op versions for perf)
