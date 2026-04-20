@@ -157,16 +157,16 @@ addEventListener('resize', ()=>{
     camera.updateProjectionMatrix();
 });
 
-// Lights - DARK MODE (flashlight-driven) - heavy darkness outside beam
-const ambLight = new THREE.AmbientLight(0x18151e, 0.25);
+// Lights - PITCH BLACK - only flashlight illuminates
+const ambLight = new THREE.AmbientLight(0x000000, 0);
 scene.add(ambLight);
-const dirLight = new THREE.DirectionalLight(0x304050, 0.08); // barely there moonlight
+const dirLight = new THREE.DirectionalLight(0x000000, 0);
 dirLight.position.set(10, 30, 10);
 dirLight.castShadow = false;
 scene.add(dirLight);
 
-// Red atmospheric (very dim, pulses for dread)
-const redLight = new THREE.PointLight(0x5a1010, 0.25, 50);
+// Red atmospheric disabled (keep reference to avoid breaking loop code)
+const redLight = new THREE.PointLight(0x000000, 0, 1);
 redLight.position.set(0, 8, 0);
 scene.add(redLight);
 
@@ -1419,8 +1419,8 @@ function loop(t){
     else camera.position.copy(basePos);
     camera.lookAt(px,0,pz);
 
-    // Red atmosphere pulse
-    redLight.intensity=0.8+Math.sin(t*0.002)*0.2;
+    // Red atmosphere disabled (pitch black)
+    // redLight.intensity=0.8+Math.sin(t*0.002)*0.2;
 
     renderer.render(scene,camera);
     requestAnimationFrame(loop);
