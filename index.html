@@ -78,9 +78,9 @@ body.locked{cursor:none}
 .mbtn{position:fixed;pointer-events:auto;background:rgba(30,20,20,0.55);border:2px solid rgba(232,192,32,0.55);color:#e8c020;font-weight:bold;font-size:14px;border-radius:50%;display:none;align-items:center;justify-content:center;user-select:none;-webkit-tap-highlight-color:transparent;text-transform:uppercase;z-index:18;font-family:'Courier New',monospace}
 .mbtn.on{background:rgba(224,56,24,0.55);border-color:#e8c020;color:#fff}
 body.mobile.playing .mbtn{display:flex}
-#btn-fire{bottom:110px;right:20px;width:92px;height:92px;font-size:17px;border-color:rgba(224,56,24,0.75);color:#e03818}
+#btn-fire{bottom:110px;right:80px;width:92px;height:92px;font-size:17px;border-color:rgba(224,56,24,0.75);color:#e03818}
 #btn-dash{bottom:215px;right:32px;width:62px;height:62px;font-size:12px}
-#btn-reload{bottom:110px;right:124px;width:62px;height:62px;font-size:22px}
+#btn-reload{bottom:110px;right:185px;width:62px;height:62px;font-size:22px}
 #btn-wep-next{top:60px;right:20px;width:54px;height:54px;font-size:22px}
 #btn-wep-prev{top:60px;left:20px;width:54px;height:54px;font-size:22px}
 #btn-pause{bottom:14px;right:14px;width:44px;height:44px;font-size:18px;border-radius:8px;z-index:40}
@@ -576,6 +576,7 @@ function onTouchStart(e){
     if(!inMenu)e.preventDefault();
 }
 function onTouchMove(e){
+    const inMenu=(state==='menu'||state==='dead'||paused);
     for(const t of e.changedTouches){
         if(t.identifier===joyTouchId){
             const jdx=t.clientX-joyStart.x,jdy=t.clientY-joyStart.y;
@@ -593,7 +594,7 @@ function onTouchMove(e){
             lookTouches.set(t.identifier,{x:t.clientX,y:t.clientY});
         }
     }
-    e.preventDefault();
+    if(!inMenu)e.preventDefault();
 }
 function onTouchEnd(e){
     for(const t of e.changedTouches){
@@ -1124,10 +1125,20 @@ function showRanking(){
     rankings.forEach((r,i)=>{h+=`<tr><td style="padding:1px 6px">${i+1}</td><td>${r.name}</td><td>${r.score}</td><td>${r.wave}</td><td>${fmtTime(r.time)}</td></tr>`;});
     h+='</table>';$goRank.innerHTML=h;
 }
-$('go-save').onclick=()=>{const n=($goInput.value||'PLAYER').toUpperCase().slice(0,10);saveRanking(n,score,waveNum,gameTime);$goName.style.display='none';showRanking();};
-$('go-restart').onclick=()=>{if(state==='dead')startGame();};
-$('vol-down').onclick=()=>{volume=Math.max(0,volume-10);$('vol-val').textContent=volume+'%';if(mvol)mvol.gain.value=volume/200;};
-$('vol-up').onclick=()=>{volume=Math.min(100,volume+10);$('vol-val').textContent=volume+'%';if(mvol)mvol.gain.value=volume/200;};
+const saveAction=()=>{const n=($goInput.value||'PLAYER').toUpperCase().slice(0,10);saveRanking(n,score,waveNum,gameTime);$goName.style.display='none';showRanking();};
+const restartAction=()=>{if(state==='dead')startGame();};
+const volDownAction=()=>{volume=Math.max(0,volume-10);$('vol-val').textContent=volume+'%';if(mvol)mvol.gain.value=volume/200;};
+const volUpAction=()=>{volume=Math.min(100,volume+10);$('vol-val').textContent=volume+'%';if(mvol)mvol.gain.value=volume/200;};
+$('go-save').onclick=saveAction;
+$('go-restart').onclick=restartAction;
+$('vol-down').onclick=volDownAction;
+$('vol-up').onclick=volUpAction;
+// Mobile direct-touch handlers (avoid 300ms click delay and any preventDefault interference)
+const tapFire=(el,fn)=>{let t=null;el.addEventListener('touchstart',e=>{t=e.changedTouches[0]?.identifier;e.stopPropagation();},{passive:true});el.addEventListener('touchend',e=>{for(const ch of e.changedTouches){if(ch.identifier===t){fn();break;}}t=null;e.stopPropagation();e.preventDefault();},{passive:false});el.addEventListener('touchcancel',()=>{t=null;},{passive:true});};
+tapFire($('go-save'),saveAction);
+tapFire($('go-restart'),restartAction);
+tapFire($('vol-down'),volDownAction);
+tapFire($('vol-up'),volUpAction);
 
 let unlockedWeapons={1:true};
 
