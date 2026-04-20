@@ -138,12 +138,13 @@ import * as THREE from 'three';
 const renderer = new THREE.WebGLRenderer({antialias:false, powerPreference:'high-performance'});
 renderer.setSize(innerWidth, innerHeight);
 renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));
-renderer.shadowMap.enabled = false;
-renderer.setClearColor(0x000000);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFShadowMap;
+renderer.setClearColor(0x2a2230);
 document.body.prepend(renderer.domElement);
 
 const scene = new THREE.Scene();
-scene.fog = null;
+scene.fog = new THREE.FogExp2(0x2a2230, 0.003);
 
 // Camera: perspective looking down at angle
 const camera = new THREE.PerspectiveCamera(50, innerWidth/innerHeight, 0.1, 200);
@@ -156,41 +157,42 @@ addEventListener('resize', ()=>{
     camera.updateProjectionMatrix();
 });
 
-// Lights - PITCH BLACK - only flashlight illuminates
-const ambLight = new THREE.AmbientLight(0x000000, 0);
+// Lights - normal mode
+const ambLight = new THREE.AmbientLight(0x605060, 2.5);
 scene.add(ambLight);
-const dirLight = new THREE.DirectionalLight(0x000000, 0);
+const dirLight = new THREE.DirectionalLight(0xfff0e0, 2.0);
 dirLight.position.set(10, 30, 10);
-dirLight.castShadow = false;
+dirLight.castShadow = true;
+dirLight.shadow.mapSize.set(512,512);
+dirLight.shadow.camera.near=1;dirLight.shadow.camera.far=60;
+dirLight.shadow.camera.left=-30;dirLight.shadow.camera.right=30;
+dirLight.shadow.camera.top=22;dirLight.shadow.camera.bottom=-22;
 scene.add(dirLight);
 
-// Red atmospheric disabled (keep reference to avoid breaking loop code)
-const redLight = new THREE.PointLight(0x000000, 0, 1);
-redLight.position.set(0, 8, 0);
+// Red point light for doom atmosphere
+const redLight = new THREE.PointLight(0xff4422, 1.0, 80);
+redLight.position.set(0, 10, 0);
 scene.add(redLight);
 
-// Dummy references (kept so existing code doesn't break)
-const plLight = new THREE.PointLight(0x000000, 0, 1);scene.add(plLight);
-const muzzleLight = new THREE.PointLight(0x000000, 0, 1);scene.add(muzzleLight);
+// Player glow
+const plLight = new THREE.PointLight(0x28882a, 0.4, 8);
+plLight.position.set(0, 2, 0);
+scene.add(plLight);
 
-// HARD FLASHLIGHT - saturating intensity + hard edges
-// Placed high + angled to flatten the Lambert gradient inside the cone
-const flashlight = new THREE.SpotLight(0xffffff, 40, 22, Math.PI/7, 0, 0);
-flashlight.position.set(0, 8, 0);
-flashlight.target = new THREE.Object3D();
-scene.add(flashlight);
-scene.add(flashlight.target);
+// Muzzle flash light
+const muzzleLight = new THREE.PointLight(0xe8c020, 0, 10);
+muzzleLight.position.set(0, 1, 0);
+scene.add(muzzleLight);
 
-function updateFlashlight(){
-    const fdx=Math.cos(pl.angle), fdz=Math.sin(pl.angle);
-    // Light source high above so the beam hits the floor more top-down
-    // -> Lambert cosine is closer to 1 across the whole cone
-    flashlight.position.set(pl.x + fdx*2, 8, pl.z + fdz*2);
-    flashlight.target.position.set(pl.x + fdx*12, 0, pl.z + fdz*12);
+// No flashlight - standard top-down lighting
+function updateFlashlight(){} // no-op
+
+// Muzzle flash - just a brief boost on the shared muzzleLight
+function triggerMuzzleFlash(color){
+    muzzleLight.color.setHex(color);
+    muzzleLight.intensity=3;
+    setTimeout(()=>muzzleLight.intensity=0,50);
 }
-
-// Stubbed FX (no-op versions for perf)
-function triggerMuzzleFlash(color){}
 function acquireBulletLight(color){return null;}
 function releaseBulletLight(l){}
 function hitFlashFX(x, z, color){}
@@ -210,11 +212,10 @@ scene.add(floor);
 // Floor grid lines
 const gridHelper = new THREE.GridHelper(Math.max(AW,AH), 20, 0x2a1518, 0x1a0e10);
 gridHelper.position.y = 0.01;
-gridHelper.visible = false; // hidden in dark mode
 scene.add(gridHelper);
 
 // Walls
-const wallMat = new THREE.MeshPhongMaterial({color:0x5a3838, emissive:0x000000});
+const wallMat = new THREE.MeshPhongMaterial({color:0x5a3838, emissive:0x2a1414});
 function mkWall(w,h,d,x,y,z){
     const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d), wallMat);
     m.position.set(x,y,z);m.castShadow=true;m.receiveShadow=true;scene.add(m);return m;
@@ -264,7 +265,7 @@ function genMaze3D(){
     innerWallMeshes.forEach(m=>scene.remove(m));
     innerWallMeshes=[];innerWalls=[];
     const layout=MAZE_LAYOUTS[Math.floor(Math.random()*MAZE_LAYOUTS.length)];
-    const wallMat2=new THREE.MeshPhongMaterial({color:0x6a3838,emissive:0x000000});
+    const wallMat2=new THREE.MeshPhongMaterial({color:0x6a3838,emissive:0x2a1414});
     for(const def of layout){
         // Mirror symmetrically (4-way for non-axis, 2-way for axis walls)
         const positions=[];
@@ -675,7 +676,7 @@ function mkEnemy(type,x,z){
     }
 
     mesh.position.set(x,0,z);mesh.scale.set(0.01,0.01,0.01);
-    mesh.traverse(c=>{if(c.isMesh){c.castShadow=false;c.receiveShadow=false;}});
+    mesh.traverse(c=>{if(c.isMesh)c.castShadow=false;});
     scene.add(mesh);
     const ent={alive:true,type,x,z,r:d.r,spd:d.spd,hp:d.hp*hpM,maxHp:d.hp*hpM,dmg:d.dmg,sc:d.sc,
         col:d.col,eye:d.eye,angle:0,ranged:d.ranged||false,fRate:d.fRate||9,shotT:0,hitT:0,kbx:0,kbz:0,
@@ -711,7 +712,7 @@ function mkBoss(idx,x,z){
     const legL=mkBoxMesh(s*0.25,s*0.4,s*0.25,d.col);legL.position.set(-s*0.2,s*0.05,0);mesh.add(legL);
     const legR=mkBoxMesh(s*0.25,s*0.4,s*0.25,d.col);legR.position.set(s*0.2,s*0.05,0);mesh.add(legR);
     mesh.position.set(x,0,z);mesh.scale.set(0.01,0.01,0.01);
-    mesh.traverse(c=>{if(c.isMesh){c.castShadow=false;c.receiveShadow=false;}});
+    mesh.traverse(c=>{if(c.isMesh)c.castShadow=false;});
     scene.add(mesh);
     const bhp=d.hp*1.3;
     return{alive:true,type:'boss',x,z,r:d.r,spd:d.spd,hp:bhp,maxHp:bhp,dmg:d.dmg,sc:d.sc,
@@ -1339,12 +1340,12 @@ function adaptQuality(t){
             _qualityLow=true;
             renderer.shadowMap.enabled=false;
             renderer.setPixelRatio(1);
-            // Keep fog but lighter so visibility stays OK if struggling
-            scene.fog=new THREE.FogExp2(0x000000,0.035);
+            scene.fog=null;
         }else if(_fpsAvg>45&&_qualityLow){
             _qualityLow=false;
+            renderer.shadowMap.enabled=true;
             renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));
-            scene.fog=new THREE.FogExp2(0x000000,0.045);
+            scene.fog=new THREE.FogExp2(0x2a2230,0.003);
         }
     }
 }
@@ -1363,8 +1364,8 @@ function loop(t){
     else camera.position.copy(basePos);
     camera.lookAt(px,0,pz);
 
-    // Red atmosphere disabled (pitch black)
-    // redLight.intensity=0.8+Math.sin(t*0.002)*0.2;
+    // Red atmosphere pulse
+    redLight.intensity=0.8+Math.sin(t*0.002)*0.2;
 
     renderer.render(scene,camera);
     requestAnimationFrame(loop);
