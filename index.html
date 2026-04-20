@@ -140,11 +140,11 @@ renderer.setSize(innerWidth, innerHeight);
 renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFShadowMap;
-renderer.setClearColor(0x2a2230);
+renderer.setClearColor(0x000000);
 document.body.prepend(renderer.domElement);
 
 const scene = new THREE.Scene();
-scene.fog = new THREE.FogExp2(0x2a2230, 0.003);
+scene.fog = new THREE.FogExp2(0x000000, 0.055);
 
 // Camera: perspective looking down at angle
 const camera = new THREE.PerspectiveCamera(50, innerWidth/innerHeight, 0.1, 200);
@@ -157,32 +157,90 @@ addEventListener('resize', ()=>{
     camera.updateProjectionMatrix();
 });
 
-// Lights
-const ambLight = new THREE.AmbientLight(0x605060, 2.5);
+// Lights - DARK MODE (flashlight-driven)
+const ambLight = new THREE.AmbientLight(0x1a1825, 0.35);
 scene.add(ambLight);
-const dirLight = new THREE.DirectionalLight(0xfff0e0, 2.0);
+const dirLight = new THREE.DirectionalLight(0x2030, 0.15); // faint moonlight
 dirLight.position.set(10, 30, 10);
-dirLight.castShadow = true;
-dirLight.shadow.mapSize.set(512,512);
-dirLight.shadow.camera.near=1;dirLight.shadow.camera.far=60;
-dirLight.shadow.camera.left=-30;dirLight.shadow.camera.right=30;
-dirLight.shadow.camera.top=22;dirLight.shadow.camera.bottom=-22;
+dirLight.castShadow = false;
 scene.add(dirLight);
 
-// Red point light for doom atmosphere
-const redLight = new THREE.PointLight(0xff4422, 1.0, 80);
-redLight.position.set(0, 10, 0);
+// Red atmospheric (very dim, pulses for dread)
+const redLight = new THREE.PointLight(0x5a1010, 0.4, 60);
+redLight.position.set(0, 8, 0);
 scene.add(redLight);
 
-// Player glow
-const plLight = new THREE.PointLight(0x28882a, 0.4, 8);
-plLight.position.set(0, 2, 0);
+// Soft glow around player (keeps player visible)
+const plLight = new THREE.PointLight(0xffb070, 0.5, 5);
+plLight.position.set(0, 1.5, 0);
 scene.add(plLight);
 
 // Muzzle flash light
 const muzzleLight = new THREE.PointLight(0xe8c020, 0, 10);
 muzzleLight.position.set(0, 1, 0);
 scene.add(muzzleLight);
+
+// ===== FLASHLIGHT SYSTEM =====
+// Main beam - narrow, strong, long reach
+const flashlight = new THREE.SpotLight(0xfff5d8, 14, 22, Math.PI/8, 0.35, 1.1);
+flashlight.position.set(0, 1.6, 0);
+flashlight.target = new THREE.Object3D();
+scene.add(flashlight);
+scene.add(flashlight.target);
+
+// Wider halo - weaker, lateral fade
+const flashHalo = new THREE.SpotLight(0xffe8b8, 4, 12, Math.PI/3.2, 0.85, 1.4);
+flashHalo.position.set(0, 1.6, 0);
+flashHalo.target = new THREE.Object3D();
+scene.add(flashHalo);
+scene.add(flashHalo.target);
+
+// Fake bounce 1 - warm glow where beam hits a surface
+const bounce1 = new THREE.PointLight(0xffc888, 0.8, 7);
+bounce1.position.set(0, 1.0, 0);
+scene.add(bounce1);
+
+// Fake bounce 2 - floor bounce fill (between player and hit)
+const bounce2 = new THREE.PointLight(0xffdba0, 0.35, 5);
+bounce2.position.set(0, 0.3, 0);
+scene.add(bounce2);
+
+// Raycast flashlight against walls to position bounces correctly
+function updateFlashlight(){
+    const fdx=Math.cos(pl.angle), fdz=Math.sin(pl.angle);
+    // Flashlight origin at player head height
+    flashlight.position.set(pl.x, 1.6, pl.z);
+    flashlight.target.position.set(pl.x+fdx*10, 1.0, pl.z+fdz*10);
+    flashHalo.position.set(pl.x, 1.5, pl.z);
+    flashHalo.target.position.set(pl.x+fdx*6, 0.5, pl.z+fdz*6);
+
+    // Ray-AABB: find how far beam travels before hitting a wall
+    let maxDist = 18;
+    // Outer walls
+    if(fdx > 0.001) maxDist = Math.min(maxDist, (HW - pl.x) / fdx);
+    else if(fdx < -0.001) maxDist = Math.min(maxDist, (-HW - pl.x) / fdx);
+    if(fdz > 0.001) maxDist = Math.min(maxDist, (HH - pl.z) / fdz);
+    else if(fdz < -0.001) maxDist = Math.min(maxDist, (-HH - pl.z) / fdz);
+    // Inner walls (cheap AABB intersection)
+    for(const w of innerWalls){
+        const hw=w.w/2, hd=w.d/2;
+        const invX = fdx===0 ? 1e9 : 1/fdx;
+        const invZ = fdz===0 ? 1e9 : 1/fdz;
+        const tx1=(w.x-hw-pl.x)*invX, tx2=(w.x+hw-pl.x)*invX;
+        const tz1=(w.z-hd-pl.z)*invZ, tz2=(w.z+hd-pl.z)*invZ;
+        const tmin=Math.max(Math.min(tx1,tx2), Math.min(tz1,tz2));
+        const tmax=Math.min(Math.max(tx1,tx2), Math.max(tz1,tz2));
+        if(tmax >= 0 && tmin <= tmax && tmin > 0) maxDist = Math.min(maxDist, tmin);
+    }
+    maxDist = Math.max(2, Math.min(maxDist, 18));
+
+    // Bounce 1: warm glow right at the hit surface
+    const bDist = maxDist * 0.92;
+    bounce1.position.set(pl.x + fdx*bDist, 1.0, pl.z + fdz*bDist);
+    // Bounce 2: mid-path floor fill
+    const b2Dist = maxDist * 0.5;
+    bounce2.position.set(pl.x + fdx*b2Dist, 0.25, pl.z + fdz*b2Dist);
+}
 
 // ===== ARENA =====
 const AW = 50, AH = 35; // world units
@@ -1073,9 +1131,10 @@ function update(dt){
     // Update player mesh
     plGroup.position.set(pl.x,0,pl.z);
     plGroup.rotation.y=-pl.angle-Math.PI/2;
-    plLight.position.set(pl.x,2,pl.z);
+    plLight.position.set(pl.x,1.5,pl.z);
     muzzleLight.position.set(pl.x+Math.cos(pl.angle)*1,1,pl.z+Math.sin(pl.angle)*1);
     plBody.material.color.setHex(pl.hurtT>0?0xe03818:0x3a7a3a);
+    updateFlashlight();
 
     // Bullets
     for(const b of bullets){
@@ -1297,12 +1356,12 @@ function adaptQuality(t){
             _qualityLow=true;
             renderer.shadowMap.enabled=false;
             renderer.setPixelRatio(1);
-            scene.fog=null;
+            // Keep fog but lighter so visibility stays OK if struggling
+            scene.fog=new THREE.FogExp2(0x000000,0.04);
         }else if(_fpsAvg>45&&_qualityLow){
             _qualityLow=false;
-            renderer.shadowMap.enabled=true;
             renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));
-            scene.fog=new THREE.FogExp2(0x2a2230,0.003);
+            scene.fog=new THREE.FogExp2(0x000000,0.055);
         }
     }
 }
