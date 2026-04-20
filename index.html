@@ -178,7 +178,7 @@ scene.add(dirLight);
 
 // Red point light for doom atmosphere
 const redLight = new THREE.PointLight(0xff4422, 1.0, 80);
-redLight.position.set(0, 10, 0);
+redLight.position.set(0, 4.2, 0);
 scene.add(redLight);
 
 // Player glow
@@ -206,7 +206,7 @@ function hitFlashFX(x, z, color){}
 
 // ===== ARENA =====
 const AW = 50, AH = 35; // world units
-const WALL_H = 3, WALL_T = 1.5;
+const WALL_H = 5, WALL_T = 1.5;
 
 // Floor
 const floorGeo = new THREE.PlaneGeometry(AW, AH, 20, 14);
@@ -215,6 +215,15 @@ const floor = new THREE.Mesh(floorGeo, floorMat);
 floor.rotation.x = -Math.PI/2;
 floor.receiveShadow = true;
 scene.add(floor);
+
+// Ceiling - darker
+const ceilGeo = new THREE.PlaneGeometry(AW, AH);
+const ceilMat = new THREE.MeshLambertMaterial({color:0x120a12});
+const ceiling = new THREE.Mesh(ceilGeo, ceilMat);
+ceiling.rotation.x = Math.PI/2;
+ceiling.position.y = WALL_H;
+ceiling.castShadow = false; ceiling.receiveShadow = false;
+scene.add(ceiling);
 
 // Floor grid lines
 const gridHelper = new THREE.GridHelper(Math.max(AW,AH), 20, 0x2a1518, 0x1a0e10);
@@ -758,11 +767,13 @@ function mkBoss(idx,x,z){
         spawnT:0.8,spawning:true,mesh,walkPhase:0,legL,legR};
 }
 
-function mkBullet(x,z,a,spd,dmg,sz,color,enemy,ric=0,y=1.15){
+function mkBullet(x,z,a,spd,dmg,sz,color,enemy,ric=0,y=1.15,pit=0){
+    const cp=Math.cos(pit),sp=Math.sin(pit);
     const mesh=getPooledBulletMesh(sz,color);
     mesh.position.set(x,y,z);scene.add(mesh);
-    return{alive:true,x,z,vx:Math.cos(a)*spd,vz:Math.sin(a)*spd,dmg,sz,color,enemy,life:3,
-        mesh,ric,bounces:0,expl:false,fire:false,blast:0,y};
+    return{alive:true,x,y,z,
+        vx:Math.cos(a)*spd*cp, vy:sp*spd, vz:Math.sin(a)*spd*cp,
+        dmg,sz,color,enemy,life:3,mesh,ric,bounces:0,expl:false,fire:false,blast:0};
 }
 
 function mkCrate(x,z){
@@ -900,10 +911,11 @@ function playerShoot(){
     const dmg=w.dmg*pl.dmgM;
 
     if(w.laser){
-        // Continuous laser beam - raycast from gun tip
+        // Continuous laser beam - raycast from gun tip, follows pitch (horizontal hit test only)
         const a=pl.angle;
+        const cpL=Math.cos(pl.pitch),spL=Math.sin(pl.pitch);
         const lrX=-Math.sin(pl.angle),lrZ=Math.cos(pl.angle);
-        const sx=pl.x+Math.cos(a)*0.7+lrX*0.25,sz=pl.z+Math.sin(a)*0.7+lrZ*0.25;
+        const sx=pl.x+Math.cos(a)*cpL*0.7+lrX*0.25,sz=pl.z+Math.sin(a)*cpL*0.7+lrZ*0.25;
         let ex=sx+Math.cos(a)*60,ez=sz+Math.sin(a)*60;
         // Clamp to arena walls
         const steps=120;const dx=Math.cos(a)*0.5,dz=Math.sin(a)*0.5;
@@ -935,14 +947,17 @@ function playerShoot(){
         return;
     }
 
-    // Gun-tip offset: forward + slight right (matches FP weapon at local +X)
+    // Gun-tip offset: forward (pitched) + slight right. Right axis stays horizontal.
+    const cpG=Math.cos(pl.pitch),spG=Math.sin(pl.pitch);
     const grX=-Math.sin(pl.angle),grZ=Math.cos(pl.angle);
-    const tipX=pl.x+Math.cos(pl.angle)*0.7+grX*0.25;
-    const tipZ=pl.z+Math.sin(pl.angle)*0.7+grZ*0.25;
-    const tipY=1.23;
+    const tipX=pl.x+Math.cos(pl.angle)*cpG*0.7+grX*0.25;
+    const tipZ=pl.z+Math.sin(pl.angle)*cpG*0.7+grZ*0.25;
+    const tipY=1.25+spG*0.6;
     for(let i=0;i<w.count;i++){
-        const sp=(Math.random()-0.5)*w.spread*2;const a=pl.angle+sp;
-        const b=mkBullet(tipX,tipZ,a,w.spd,dmg,w.sz,w.color,false,w.ric||0,tipY);
+        const sp=(Math.random()-0.5)*w.spread*2;
+        const a=pl.angle+sp;
+        const pit=pl.pitch+(Math.random()-0.5)*w.spread; // small vertical spread too
+        const b=mkBullet(tipX,tipZ,a,w.spd,dmg,w.sz,w.color,false,w.ric||0,tipY,pit);
         b.expl=w.expl||false;b.fire=w.fire||false;b.blast=w.blast||0;
         b.light = acquireBulletLight(w.color);
         bullets.push(b);
@@ -953,13 +968,17 @@ function playerShoot(){
 
 function enShoot(e){
     const a=Math.atan2(pl.z-e.z,pl.x-e.x)+(Math.random()-0.5)*0.25;
-    const b=mkBullet(e.x+Math.cos(a)*e.r,e.z+Math.sin(a)*e.r,a,9,e.dmg,0.12,0x50cc40,true,2);
+    const srcY=1.1,d=Math.hypot(pl.x-e.x,pl.z-e.z);
+    const pit=Math.atan2(1.3-srcY,d); // aim at player chest
+    const b=mkBullet(e.x+Math.cos(a)*e.r,e.z+Math.sin(a)*e.r,a,9,e.dmg,0.12,0x50cc40,true,2,srcY,pit);
     b.life=5;bullets.push(b);
 }
 function bossShoot(e,n){
     const base=Math.atan2(pl.z-e.z,pl.x-e.x);
+    const srcY=1.2,d=Math.hypot(pl.x-e.x,pl.z-e.z);
+    const pit=Math.atan2(1.3-srcY,d);
     for(let i=0;i<n;i++){const off=(i-Math.floor(n/2))*0.2;const a=base+off+(Math.random()-0.5)*0.12;
-    const b=mkBullet(e.x+Math.cos(a)*e.r,e.z+Math.sin(a)*e.r,a,7.5,e.dmg*0.5,0.15,0xe03818,true,2);
+    const b=mkBullet(e.x+Math.cos(a)*e.r,e.z+Math.sin(a)*e.r,a,7.5,e.dmg*0.5,0.15,0xe03818,true,2,srcY,pit);
     b.life=6;bullets.push(b);}
 }
 
@@ -1166,14 +1185,16 @@ function update(dt){
     // Bullets
     for(const b of bullets){
         if(!b.alive)continue;
-        b.x+=b.vx*dt;b.z+=b.vz*dt;b.life-=dt;
+        b.x+=b.vx*dt;b.z+=b.vz*dt;b.y+=(b.vy||0)*dt;b.life-=dt;
         if(b.life<=0){b.alive=false;scene.remove(b.mesh);returnBulletToPool(b.mesh);if(b.light){releaseBulletLight(b.light);b.light=null;}continue;}
-        // Wall ricochet
+        // Wall ricochet - all 6 faces of the arena box
         let hitW=false;
         if(b.x<-HW){b.x=-HW;b.vx=Math.abs(b.vx);hitW=true;}
         if(b.x>HW){b.x=HW;b.vx=-Math.abs(b.vx);hitW=true;}
         if(b.z<-HH){b.z=-HH;b.vz=Math.abs(b.vz);hitW=true;}
         if(b.z>HH){b.z=HH;b.vz=-Math.abs(b.vz);hitW=true;}
+        if(b.y<0.05){b.y=0.05;b.vy=Math.abs(b.vy||0);hitW=true;}
+        if(b.y>WALL_H-0.05){b.y=WALL_H-0.05;b.vy=-Math.abs(b.vy||0);hitW=true;}
         if(hitW){b.bounces++;if(b.bounces>b.ric){
             if(b.expl||b.fire){sfx.explode();explodeFX(b.x,b.z,b.blast);shake=Math.max(shake,0.3);
                 for(const en of enemies){if(!en.alive||en.spawning)continue;const dd=dst(b,en);if(dd<b.blast){en.hp-=b.dmg*(1-dd/b.blast);en.hitT=0.08;if(en.hp<=0)killEn(en);}}}
@@ -1191,22 +1212,23 @@ function update(dt){
             sfx.ricochet();emitP(b.x,b.z,0xe8d040,2,2);
         }
         if(!b.alive)continue;
-        b.mesh.position.set(b.x,b.y||1.15,b.z);
-        if(b.light)b.light.position.set(b.x,(b.y||1.15)+0.1,b.z);
+        b.mesh.position.set(b.x,b.y,b.z);
+        if(b.light)b.light.position.set(b.x,b.y+0.1,b.z);
 
         if(!b.enemy){
             for(const e of enemies){if(!e.alive||e.spawning)continue;
-                if(dst(b,e)<e.r+b.sz){e.hp-=b.dmg;e.hitT=0.08;spawnDmgNum(e.x,e.z,b.dmg);const ka=Math.atan2(e.z-b.z,e.x-b.x);e.kbx+=Math.cos(ka)*4;e.kbz+=Math.sin(ka)*4;emitP(b.x,b.z,0xffeecc,3,2);hitFlashFX(b.x,b.z,0xffcc44);sfx.hit();
+                const ehTop=e.boss?4:2.2;
+                if(dst(b,e)<e.r+b.sz&&b.y>=0&&b.y<=ehTop){e.hp-=b.dmg;e.hitT=0.08;spawnDmgNum(e.x,e.z,b.dmg);const ka=Math.atan2(e.z-b.z,e.x-b.x);e.kbx+=Math.cos(ka)*4;e.kbz+=Math.sin(ka)*4;emitP(b.x,b.z,0xffeecc,3,2);hitFlashFX(b.x,b.z,0xffcc44);sfx.hit();
                 if(e.hp<=0)killEn(e);
                 if(b.expl||b.fire){sfx.explode();explodeFX(b.x,b.z,b.blast);shake=Math.max(shake,0.2);for(const e2 of enemies){if(!e2.alive||e2.spawning||e2===e)continue;const dd=dst(b,e2);if(dd<b.blast){e2.hp-=b.dmg*0.6*(1-dd/b.blast);e2.hitT=0.08;if(e2.hp<=0)killEn(e2);}}}
                 b.alive=false;scene.remove(b.mesh);returnBulletToPool(b.mesh);if(b.light){releaseBulletLight(b.light);b.light=null;};break;}}
             if(b.alive)for(const cr of crates){if(!cr.alive||cr.spawnT>0)continue;
-                if(dst(b,cr)<cr.r+b.sz){
+                if(dst(b,cr)<cr.r+b.sz&&b.y<1.0){
                     if(cr.kind==='wep'){pl.wep=cr.wi;if(cr.wi>1)ammo[cr.wi]=WEAP[cr.wi].maxAmmo;reloading=false;announce(WEAP[cr.wi].name,'',1000);}
                     else{for(let w=2;w<=WC;w++){if(unlockedWeapons[w])ammo[w]=Math.min(WEAP[w].maxAmmo,ammo[w]+Math.ceil(WEAP[w].maxAmmo*0.15));}announce('+AMMO','',800);}
                     emitP(cr.x,cr.z,0xc8a010,8,3);sfx.pickup();cr.alive=false;scene.remove(cr.mesh);b.alive=false;scene.remove(b.mesh);returnBulletToPool(b.mesh);if(b.light){releaseBulletLight(b.light);b.light=null;};break;}}
         }else{
-            if(pl.inv<=0&&dst(b,pl)<pl.r+b.sz){
+            if(pl.inv<=0&&dst(b,pl)<pl.r+b.sz&&b.y>=0&&b.y<=2.0){
                 pl.hp-=b.dmg*0.8;pl.hurtT=0.12;shake=Math.max(shake,0.3);emitP(pl.x,pl.z,0xe03818,3,2);
                 b.alive=false;scene.remove(b.mesh);returnBulletToPool(b.mesh);if(b.light){releaseBulletLight(b.light);b.light=null;};if(pl.hp<=0)die();
             }
