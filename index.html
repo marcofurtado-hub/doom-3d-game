@@ -413,7 +413,12 @@ const MOUSE_SENS=0.0022;
 addEventListener('keydown',e=>{keys[e.key.toLowerCase()]=true;if(e.key==='Escape'&&state==='play'){paused=!paused;$pause.style.display=paused?'flex':'none';if(paused&&document.pointerLockElement)document.exitPointerLock();}});
 addEventListener('keyup',e=>keys[e.key.toLowerCase()]=false);
 addEventListener('mousemove',e=>{
-    if(document.pointerLockElement){pl.angle+=e.movementX*MOUSE_SENS;}
+    if(document.pointerLockElement){
+        pl.angle+=e.movementX*MOUSE_SENS;
+        pl.pitch-=e.movementY*MOUSE_SENS;
+        if(pl.pitch>PITCH_MAX)pl.pitch=PITCH_MAX;
+        if(pl.pitch<-PITCH_MAX)pl.pitch=-PITCH_MAX;
+    }
 });
 addEventListener('mousedown',e=>{
     if(e.button===0){
@@ -537,7 +542,8 @@ let gameTime=0,paused=false,shake=0,nextBoss=0,volume=50;
 let toSpawn=0,spawnT=0,spawnRate=0,crateT=0;
 
 // Player
-const pl={x:0,z:0,r:0.5,angle:0,hp:20,maxHp:20,spd:10,wep:1,shotT:0,dmgM:1,rateM:1,dashCd:0,dashT:0,inv:0,hurtT:0,walkPhase:0};
+const pl={x:0,z:0,r:0.5,angle:0,pitch:0,hp:20,maxHp:20,spd:10,wep:1,shotT:0,dmgM:1,rateM:1,dashCd:0,dashT:0,inv:0,hurtT:0,walkPhase:0};
+const PITCH_MAX=1.35; // ~77° up/down
 
 // Entity arrays
 let enemies=[],bullets=[],particles=[],crates=[];
@@ -829,7 +835,7 @@ function startGame(){
     state='play';phase='idle';phaseT=0.5;
     waveNum=0;score=0;kills=0;combo=0;comboT=0;comboX=1;shake=0;nextBoss=0;gameTime=0;paused=false;
     $pause.style.display='none';
-    pl.x=0;pl.z=0;pl.hp=20;pl.maxHp=20;pl.spd=12;pl.wep=1;pl.shotT=0;pl.angle=-Math.PI/2;
+    pl.x=0;pl.z=0;pl.hp=20;pl.maxHp=20;pl.spd=12;pl.wep=1;pl.shotT=0;pl.angle=-Math.PI/2;pl.pitch=0;
     pl.dmgM=1;pl.rateM=1;pl.dashCd=0;pl.dashT=0;pl.inv=0;pl.hurtT=0;pl.walkPhase=0;
     unlockedWeapons={1:true};
     // Clear entities
@@ -1402,18 +1408,19 @@ function loop(t){
     adaptQuality(t);
     update(dt);
 
-    // FPS camera at eye level with bob + shake
+    // FPS camera at eye level with bob + shake + yaw/pitch look
     const px=state==='play'?pl.x:0,pz=state==='play'?pl.z:0;
     const ang=state==='play'?pl.angle:0;
+    const pit=state==='play'?pl.pitch:0;
     const bobY=state==='play'?Math.sin(pl.walkPhase)*0.05:0;
     const bobX=state==='play'?Math.cos(pl.walkPhase*0.5)*0.03:0;
     const eyeY=1.45+bobY+(pl.hurtT>0?-0.02:0);
-    // Strafe-perpendicular for small camera lean while bobbing
     const rX=-Math.sin(ang),rZ=Math.cos(ang);
     let cx=px+rX*bobX, cy=eyeY, cz=pz+rZ*bobX;
     if(shake>0){cx+=(Math.random()-0.5)*shake*0.6;cy+=(Math.random()-0.5)*shake*0.4;cz+=(Math.random()-0.5)*shake*0.6;}
     camera.position.set(cx,cy,cz);
-    camera.lookAt(px+Math.cos(ang), eyeY, pz+Math.sin(ang));
+    const cp=Math.cos(pit),sp=Math.sin(pit);
+    camera.lookAt(cx+Math.cos(ang)*cp, cy+sp, cz+Math.sin(ang)*cp);
 
     // Red atmosphere pulse
     redLight.intensity=0.8+Math.sin(t*0.002)*0.2;
