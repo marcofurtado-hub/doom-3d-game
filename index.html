@@ -792,18 +792,87 @@ plGroup.position.y=0;
 plGroup.visible=false; // hidden in FPS view
 scene.add(plGroup);
 
-// First-person gun model (parented to camera)
+// First-person gun model (parented to camera) - weapon-specific factory
 const fpGun=new THREE.Group();
-const fpBarrel=mkBoxMesh(0.09,0.09,0.42,0x555555,0x111111);
-fpBarrel.position.set(0.26,-0.22,-0.48);fpGun.add(fpBarrel);
-const fpHandle=mkBoxMesh(0.11,0.2,0.14,0x333333);
-fpHandle.position.set(0.26,-0.36,-0.25);fpGun.add(fpHandle);
-const fpTip=mkBoxMesh(0.11,0.11,0.05,0x222222);
-fpTip.position.set(0.26,-0.22,-0.71);fpGun.add(fpTip);
-const fpSight=mkBoxMesh(0.04,0.05,0.04,0xe8c020,0xe8c020);
-fpSight.position.set(0.26,-0.16,-0.65);fpGun.add(fpSight);
-fpGun.traverse(c=>{if(c.isMesh){c.castShadow=false;c.receiveShadow=false;}});
 camera.add(fpGun);
+let fpGunCurrent=0;
+function _fpPart(w,h,d,color,px,py,pz,emissive=0){
+    const m=mkBoxMesh(w,h,d,color,emissive);
+    m.position.set(px,py,pz);
+    m.castShadow=false;m.receiveShadow=false;
+    fpGun.add(m);return m;
+}
+function buildFPWeapon(id){
+    // Dispose old children
+    while(fpGun.children.length>0){
+        const c=fpGun.children[0];fpGun.remove(c);
+        if(c.geometry)c.geometry.dispose();
+        if(c.material)c.material.dispose();
+    }
+    const X=0.26,Y=-0.22;
+    if(id===1){ // PISTOL - small handgun
+        _fpPart(0.08,0.08,0.35,0x555555,X,Y,-0.52,0x111111);
+        _fpPart(0.1,0.2,0.13,0x2a2a2a,X,Y-0.16,-0.32);
+        _fpPart(0.07,0.05,0.04,0x222222,X,Y+0.06,-0.58);
+        _fpPart(0.04,0.05,0.04,0xe8c020,X,Y+0.08,-0.65,0xe8c020);
+    }else if(id===2){ // SHOTGUN - wood stock, double barrel
+        _fpPart(0.13,0.1,0.6,0x5a3a20,X,Y,-0.45,0x201008);
+        _fpPart(0.08,0.08,0.62,0x222222,X,Y+0.08,-0.45);
+        _fpPart(0.11,0.08,0.2,0x7a5020,X,Y-0.07,-0.55); // pump
+        _fpPart(0.13,0.16,0.2,0x5a3a20,X,Y-0.04,-0.18); // stock
+        _fpPart(0.04,0.04,0.03,0xe8c020,X,Y+0.14,-0.7,0xe8c020);
+    }else if(id===3){ // CHAINGUN - rotary barrels
+        _fpPart(0.16,0.16,0.3,0x444444,X,Y,-0.4,0x111111);
+        for(let i=0;i<6;i++){
+            const a=(Math.PI*2/6)*i;
+            _fpPart(0.035,0.035,0.48,0x2a2a2a,X+Math.cos(a)*0.07,Y+Math.sin(a)*0.07,-0.58);
+        }
+        _fpPart(0.17,0.04,0.05,0x333333,X,Y,-0.82); // front ring
+        _fpPart(0.16,0.1,0.1,0x222222,X,Y-0.13,-0.3); // ammo feed
+        _fpPart(0.11,0.18,0.14,0x222222,X,Y-0.18,-0.18); // grip
+    }else if(id===4){ // ROCKET LAUNCHER - big green tube with red warhead
+        _fpPart(0.18,0.18,0.55,0x3a4a1a,X,Y,-0.5,0x0a1408);
+        _fpPart(0.15,0.03,0.1,0x2a2a2a,X,Y+0.11,-0.5); // top sight rail
+        _fpPart(0.05,0.07,0.04,0xe8c020,X,Y+0.17,-0.55,0xe8c020);
+        _fpPart(0.15,0.15,0.1,0xe03818,X,Y,-0.82,0x601010); // rocket nose
+        _fpPart(0.11,0.16,0.14,0x222222,X,Y-0.16,-0.3);
+    }else if(id===5){ // PLASMA GUN - sci-fi blue glow
+        _fpPart(0.13,0.13,0.45,0x1a2030,X,Y,-0.5,0x001a3a);
+        _fpPart(0.1,0.1,0.06,0x40c0e0,X,Y,-0.78,0x40c0e0); // glowing emitter
+        _fpPart(0.05,0.11,0.18,0x208098,X+0.1,Y,-0.5,0x106080); // right cell
+        _fpPart(0.05,0.11,0.18,0x208098,X-0.1,Y,-0.5,0x106080); // left cell
+        _fpPart(0.12,0.03,0.15,0x2a3040,X,Y+0.08,-0.5); // top rail
+        _fpPart(0.03,0.05,0.04,0x80e0ff,X,Y+0.12,-0.55,0x80e0ff); // sight
+        _fpPart(0.11,0.16,0.14,0x1a1a2a,X,Y-0.16,-0.3);
+    }else if(id===6){ // GRENADE LAUNCHER (BOMB) - short fat barrel
+        _fpPart(0.19,0.19,0.3,0x444444,X,Y,-0.4,0x111111);
+        _fpPart(0.14,0.14,0.12,0xe8d040,X,Y,-0.62,0x302008); // visible grenade
+        _fpPart(0.05,0.04,0.1,0x222222,X,Y+0.12,-0.42); // top handle
+        _fpPart(0.11,0.18,0.14,0x2a2a2a,X,Y-0.17,-0.25); // trigger grip
+    }else if(id===7){ // MOLOTOV - hand-thrown bottle
+        _fpPart(0.1,0.14,0.1,0x3a2418,X,Y-0.05,-0.25); // hand
+        _fpPart(0.09,0.24,0.09,0xd06020,X,Y+0.12,-0.35,0x502008); // glass bottle
+        _fpPart(0.07,0.03,0.07,0x3a2418,X,Y+0.25,-0.35); // cork
+        _fpPart(0.05,0.12,0.05,0xff4010,X,Y+0.36,-0.35,0xff4010); // flame rag
+        _fpPart(0.04,0.08,0.04,0xffa020,X,Y+0.44,-0.35,0xffa020); // flame tip
+    }else if(id===8){ // LASER RIFLE - sleek with red emitter
+        _fpPart(0.07,0.07,0.55,0x888888,X,Y,-0.5);
+        _fpPart(0.06,0.06,0.06,0xff2020,X,Y,-0.81,0xff2020); // red emitter
+        _fpPart(0.15,0.04,0.2,0x5a5a5a,X,Y+0.055,-0.5); // top rail
+        _fpPart(0.04,0.04,0.04,0xff2020,X,Y+0.1,-0.6,0xff2020); // red sight
+        _fpPart(0.1,0.04,0.12,0x5a5a5a,X,Y-0.055,-0.5); // bottom rail
+        _fpPart(0.1,0.16,0.14,0x2a2a2a,X,Y-0.15,-0.3);
+    }else if(id===9){ // MEGA BOMB - huge launcher with big orange warhead
+        _fpPart(0.22,0.22,0.55,0x222222,X,Y,-0.5,0x080808);
+        _fpPart(0.24,0.04,0.5,0x3a3a3a,X,Y+0.13,-0.5); // top ridge
+        _fpPart(0.18,0.18,0.15,0xff4400,X,Y,-0.85,0xff4400); // warhead
+        _fpPart(0.14,0.14,0.03,0xffaa00,X,Y,-0.94,0xffaa00); // glow tip
+        _fpPart(0.05,0.07,0.04,0xe8c020,X,Y+0.18,-0.55,0xe8c020);
+        _fpPart(0.13,0.2,0.16,0x1a1a1a,X,Y-0.19,-0.28);
+    }
+    fpGunCurrent=id;
+}
+buildFPWeapon(1);
 
 // ===== ENTITY FACTORIES =====
 function mkEnemy(type,x,z){
@@ -1157,6 +1226,25 @@ function spawnDmgNum(x,z,dmg){
     sprite.position.set(x,1.5,z);scene.add(sprite);
     particles.push({alive:true,mesh:sprite,vx:(Math.random()-0.5)*0.5,vy:3,vz:(Math.random()-0.5)*0.5,life:0.8,ml:0.8,isDmgNum:true,noPool:true});
 }
+// Heal "+N" floating number (green)
+const _healNumCache=new Map();
+function _getHealTex(val){
+    if(_healNumCache.has(val))return _healNumCache.get(val);
+    const canvas=document.createElement('canvas');canvas.width=80;canvas.height=32;
+    const ctx=canvas.getContext('2d');ctx.fillStyle='#40ff50';ctx.font='bold 24px monospace';
+    ctx.textAlign='center';ctx.fillText('+'+val,40,24);
+    const tex=new THREE.CanvasTexture(canvas);
+    if(_healNumCache.size<30)_healNumCache.set(val,tex);
+    return tex;
+}
+function spawnHealNum(x,z,hp){
+    if(particles.length>=MAX_PARTICLES)return;
+    const tex=_getHealTex(Math.ceil(hp));
+    const mat=new THREE.SpriteMaterial({map:tex,transparent:true});
+    const sprite=new THREE.Sprite(mat);sprite.scale.set(0.9,0.45,1);
+    sprite.position.set(x,1.8,z);scene.add(sprite);
+    particles.push({alive:true,mesh:sprite,vx:0,vy:2.5,vz:0,life:1.0,ml:1.0,isDmgNum:true,noPool:true});
+}
 
 function mkBloodSplat(px,pz,size,col){
     const geo=new THREE.CylinderGeometry(size,size,0.01,8);
@@ -1235,6 +1323,19 @@ function killEn(e){
     combo++;comboT=1.5;comboX=Math.min(10,1+Math.floor(combo/4));
     bloodExplosion(e.x,e.z,e.r);sfx.kill();sfx.explode();
     if(Math.random()<0.1){for(let w=2;w<=WC;w++){if(unlockedWeapons[w])ammo[w]=Math.min(WEAP[w].maxAmmo,ammo[w]+Math.ceil(WEAP[w].maxAmmo*0.03));}}
+    // Life recovery proportional to difficulty (boss = full heal)
+    if(e.boss&&!e.divided){
+        const before=pl.hp;pl.hp=pl.maxHp;
+        if(pl.hp>before){spawnHealNum(pl.x,pl.z,pl.hp-before);emitP(pl.x,pl.z,0x40ff50,10,3);}
+        announce('FULL HEAL!','',1000);sfx.pickup();
+    }else{
+        const base=e.boss?Math.ceil(e.maxHp*0.25):Math.ceil(e.maxHp*0.12);
+        const heal=Math.max(1,base);
+        const before=pl.hp;
+        pl.hp=Math.min(pl.maxHp,pl.hp+heal);
+        const actual=pl.hp-before;
+        if(actual>0){spawnHealNum(pl.x,pl.z,actual);emitP(pl.x,pl.z,0x40ff50,3,1.5);}
+    }
     if(e.boss){
         shake=0.6;emitP(e.x,e.z,0xd06020,15,5);emitP(e.x,e.z,0xe8d040,10,4);sfx.explode();
         for(let w=2;w<=WC;w++){if(unlockedWeapons[w])ammo[w]=Math.min(WEAP[w].maxAmmo,ammo[w]+Math.ceil(WEAP[w].maxAmmo*0.5));}
@@ -1323,11 +1424,16 @@ function update(dt){
     plBody.material.color.setHex(pl.hurtT>0?0xe03818:0x3a7a3a);
     updateFlashlight();
 
+    // Rebuild FP weapon model when changing weapon
+    if(fpGunCurrent!==pl.wep)buildFPWeapon(pl.wep);
     // FP gun bob + recoil recovery
     const moving=(dx||dz)?1:0;
     if(moving){fpGun.position.x=0.004*Math.sin(pl.walkPhase*2);fpGun.position.y=-0.008*Math.abs(Math.sin(pl.walkPhase));}
     else{fpGun.position.x*=0.85;fpGun.position.y*=0.85;}
     fpGun.position.z*=0.82; // recoil recovery toward 0
+    // Chaingun rotary spin when firing
+    if(pl.wep===3&&mDown&&!reloading){fpGun.rotation.z+=dt*28;}
+    else{fpGun.rotation.z*=0.9;}
 
     // Bullets
     for(const b of bullets){
