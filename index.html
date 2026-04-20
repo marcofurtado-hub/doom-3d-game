@@ -478,7 +478,10 @@ const MOUSE_SENS=0.0022;
 const TOUCH_LOOK_SENS=0.0045;
 let touchMove={fwd:0,str:0};
 let joyTouchId=null,joyStart=null;
-let lookTouchId=null,lookLast=null;
+// Multiple fingers can contribute to look. Map: touchId -> {x,y}
+const lookTouches=new Map();
+function addLook(id,x,y){lookTouches.set(id,{x,y});}
+function removeLook(id){lookTouches.delete(id);}
 
 addEventListener('keydown',e=>{keys[e.key.toLowerCase()]=true;if(e.key==='Escape'&&state==='play'){paused=!paused;$pause.style.display=paused?'flex':'none';if(paused&&document.pointerLockElement)document.exitPointerLock();}});
 addEventListener('keyup',e=>keys[e.key.toLowerCase()]=false);
@@ -527,14 +530,15 @@ function hideJoy(){
     document.getElementById('joy-knob').classList.remove('on');
 }
 function onTouchStart(e){
-    if(isBtnTarget(e.target))return; // buttons handle themselves
+    if(isBtnTarget(e.target))return; // buttons handle themselves (but still add to lookTouches)
     for(const t of e.changedTouches){
         const x=t.clientX,y=t.clientY;
         if(state==='menu'||state==='dead'||paused){clicked=true;mDown=true;continue;}
         if(x<innerWidth/2){
             if(joyTouchId===null){joyTouchId=t.identifier;joyStart={x,y};showJoy(x,y);}
+            else addLook(t.identifier,x,y); // extra left-side finger also looks
         }else{
-            if(lookTouchId===null){lookTouchId=t.identifier;lookLast={x,y};}
+            addLook(t.identifier,x,y);
         }
     }
     e.preventDefault();
@@ -547,13 +551,14 @@ function onTouchMove(e){
             if(m>6){const n=Math.min(1,m/mr);touchMove.str=(jdx/m)*n;touchMove.fwd=-(jdy/m)*n;}
             else{touchMove.str=0;touchMove.fwd=0;}
             updJoyKnob(joyStart.x,joyStart.y,t.clientX,t.clientY,mr);
-        }else if(t.identifier===lookTouchId){
-            const dx=t.clientX-lookLast.x,dy=t.clientY-lookLast.y;
+        }else if(lookTouches.has(t.identifier)){
+            const prev=lookTouches.get(t.identifier);
+            const dx=t.clientX-prev.x,dy=t.clientY-prev.y;
             pl.angle+=dx*TOUCH_LOOK_SENS;
             pl.pitch-=dy*TOUCH_LOOK_SENS;
             if(pl.pitch>PITCH_MAX)pl.pitch=PITCH_MAX;
             if(pl.pitch<-PITCH_MAX)pl.pitch=-PITCH_MAX;
-            lookLast={x:t.clientX,y:t.clientY};
+            lookTouches.set(t.identifier,{x:t.clientX,y:t.clientY});
         }
     }
     e.preventDefault();
@@ -561,7 +566,7 @@ function onTouchMove(e){
 function onTouchEnd(e){
     for(const t of e.changedTouches){
         if(t.identifier===joyTouchId){joyTouchId=null;touchMove.str=0;touchMove.fwd=0;hideJoy();}
-        else if(t.identifier===lookTouchId){lookTouchId=null;}
+        if(lookTouches.has(t.identifier))removeLook(t.identifier);
     }
     // note: mDown is controlled by fire button handlers only, not global touchend
 }
@@ -570,24 +575,37 @@ if(isMobile){
     addEventListener('touchmove',onTouchMove,{passive:false});
     addEventListener('touchend',onTouchEnd,{passive:false});
     addEventListener('touchcancel',onTouchEnd,{passive:false});
+    // Helper: register a touch as a "look" source (so drag on button also rotates camera)
+    const registerLookTouches=e=>{for(const t of e.changedTouches)addLook(t.identifier,t.clientX,t.clientY);};
+    const unregisterLookTouches=e=>{for(const t of e.changedTouches)removeLook(t.identifier);};
+
     const bFire=document.getElementById('btn-fire');
-    const fireOn=e=>{mDown=true;clicked=true;bFire.classList.add('on');e.stopPropagation();e.preventDefault();};
-    const fireOff=e=>{mDown=false;bFire.classList.remove('on');e.stopPropagation();e.preventDefault();};
+    const fireOn=e=>{mDown=true;clicked=true;bFire.classList.add('on');registerLookTouches(e);e.stopPropagation();e.preventDefault();};
+    const fireOff=e=>{mDown=false;bFire.classList.remove('on');unregisterLookTouches(e);e.stopPropagation();e.preventDefault();};
     bFire.addEventListener('touchstart',fireOn,{passive:false});
     bFire.addEventListener('touchend',fireOff,{passive:false});
     bFire.addEventListener('touchcancel',fireOff,{passive:false});
+
     const bDash=document.getElementById('btn-dash');
-    bDash.addEventListener('touchstart',e=>{keys['shift']=true;bDash.classList.add('on');e.stopPropagation();e.preventDefault();},{passive:false});
-    bDash.addEventListener('touchend',e=>{keys['shift']=false;bDash.classList.remove('on');e.stopPropagation();e.preventDefault();},{passive:false});
+    bDash.addEventListener('touchstart',e=>{keys['shift']=true;bDash.classList.add('on');registerLookTouches(e);e.stopPropagation();e.preventDefault();},{passive:false});
+    bDash.addEventListener('touchend',e=>{keys['shift']=false;bDash.classList.remove('on');unregisterLookTouches(e);e.stopPropagation();e.preventDefault();},{passive:false});
+    bDash.addEventListener('touchcancel',e=>{keys['shift']=false;bDash.classList.remove('on');unregisterLookTouches(e);e.stopPropagation();e.preventDefault();},{passive:false});
+
     const bRld=document.getElementById('btn-reload');
-    bRld.addEventListener('touchstart',e=>{keys['r']=true;bRld.classList.add('on');requestAnimationFrame(()=>{keys['r']=false;bRld.classList.remove('on');});e.stopPropagation();e.preventDefault();},{passive:false});
+    bRld.addEventListener('touchstart',e=>{keys['r']=true;bRld.classList.add('on');registerLookTouches(e);requestAnimationFrame(()=>{keys['r']=false;bRld.classList.remove('on');});e.stopPropagation();e.preventDefault();},{passive:false});
+    bRld.addEventListener('touchend',e=>{unregisterLookTouches(e);e.stopPropagation();e.preventDefault();},{passive:false});
+    bRld.addEventListener('touchcancel',e=>{unregisterLookTouches(e);e.stopPropagation();e.preventDefault();},{passive:false});
+
     const bWep=document.getElementById('btn-wep');
     bWep.addEventListener('touchstart',e=>{
         const ks=Object.keys(unlockedWeapons).map(Number).sort((a,b)=>a-b);
         if(ks.length>0){const i=ks.indexOf(pl.wep);pl.wep=ks[(i+1)%ks.length];reloading=false;pl.shotT=0;}
         bWep.classList.add('on');setTimeout(()=>bWep.classList.remove('on'),120);
+        registerLookTouches(e);
         e.stopPropagation();e.preventDefault();
     },{passive:false});
+    bWep.addEventListener('touchend',e=>{unregisterLookTouches(e);e.stopPropagation();e.preventDefault();},{passive:false});
+    bWep.addEventListener('touchcancel',e=>{unregisterLookTouches(e);e.stopPropagation();e.preventDefault();},{passive:false});
 }
 
 // ===== AUDIO =====
