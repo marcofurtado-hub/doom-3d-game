@@ -562,9 +562,10 @@ function hideJoy(){
 }
 function onTouchStart(e){
     if(isBtnTarget(e.target))return; // buttons handle themselves (but still add to lookTouches)
+    const inMenu=(state==='menu'||state==='dead'||paused);
     for(const t of e.changedTouches){
         const x=t.clientX,y=t.clientY;
-        if(state==='menu'||state==='dead'||paused){clicked=true;mDown=true;continue;}
+        if(inMenu){clicked=true;continue;} // don't set mDown (avoids auto-fire); don't preventDefault (lets onclick fire)
         if(x<innerWidth/2){
             if(joyTouchId===null){joyTouchId=t.identifier;joyStart={x,y};showJoy(x,y);}
             else addLook(t.identifier,x,y); // extra left-side finger also looks
@@ -572,7 +573,7 @@ function onTouchStart(e){
             addLook(t.identifier,x,y);
         }
     }
-    e.preventDefault();
+    if(!inMenu)e.preventDefault();
 }
 function onTouchMove(e){
     for(const t of e.changedTouches){
@@ -1142,6 +1143,7 @@ function tryFullscreen(){
 
 function startGame(){
     tryFullscreen();
+    mDown=false;clicked=false;
     state='play';phase='idle';phaseT=0.5;
     waveNum=0;score=0;kills=0;combo=0;comboT=0;comboX=1;shake=0;nextBoss=0;gameTime=0;paused=false;
     $pause.style.display='none';
@@ -1182,7 +1184,7 @@ function die(){
 
 function startWave(){
     waveNum++;phase='spawn';
-    toSpawn=15+waveNum*8;spawnRate=Math.max(0.08,0.4-waveNum*0.025);
+    toSpawn=10+waveNum*7;spawnRate=Math.max(0.08,0.4-waveNum*0.025);
     spawnT=0;crateT=4+Math.random()*3;
     announce('WAVE '+waveNum,toSpawn+' ENEMIES',2000);
     sfx.boss();
