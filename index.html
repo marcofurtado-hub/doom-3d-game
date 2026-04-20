@@ -82,8 +82,8 @@ body.mobile.playing .mbtn{display:flex}
 #btn-dash{bottom:215px;right:32px;width:62px;height:62px;font-size:12px}
 #btn-reload{bottom:110px;right:124px;width:62px;height:62px;font-size:22px}
 #btn-wep-next{top:60px;right:20px;width:54px;height:54px;font-size:22px}
-#btn-wep-prev{top:60px;right:86px;width:54px;height:54px;font-size:22px}
-#btn-pause{bottom:14px;left:14px;width:44px;height:44px;font-size:18px;border-radius:8px;z-index:40}
+#btn-wep-prev{top:60px;left:20px;width:54px;height:54px;font-size:22px}
+#btn-pause{bottom:14px;right:14px;width:44px;height:44px;font-size:18px;border-radius:8px;z-index:40}
 #joy-base,#joy-knob{position:fixed;border-radius:50%;pointer-events:none;z-index:12;display:none}
 #joy-base{width:120px;height:120px;background:rgba(255,255,255,0.06);border:2px solid rgba(232,192,32,0.35)}
 #joy-knob{width:60px;height:60px;background:rgba(232,192,32,0.35);border:2px solid rgba(232,192,32,0.7)}
@@ -504,7 +504,7 @@ if(isMobile){
 // ===== INPUT =====
 const keys={};let mDown=false,clicked=false;
 const MOUSE_SENS=0.0022;
-const TOUCH_LOOK_SENS=0.0105; // mobile look sensitivity (higher = pouco movimento olha mais)
+const TOUCH_LOOK_SENS=0.02; // mobile look sensitivity (higher = pouco movimento olha mais)
 let touchMove={fwd:0,str:0};
 let joyTouchId=null,joyStart=null;
 // Multiple fingers can contribute to look. Map: touchId -> {x,y}
@@ -1130,7 +1130,18 @@ $('vol-up').onclick=()=>{volume=Math.min(100,volume+10);$('vol-val').textContent
 
 let unlockedWeapons={1:true};
 
+function tryFullscreen(){
+    const el=document.documentElement;
+    const fn=el.requestFullscreen||el.webkitRequestFullscreen||el.mozRequestFullScreen||el.msRequestFullscreen;
+    if(!fn)return;
+    const already=document.fullscreenElement||document.webkitFullscreenElement||document.mozFullScreenElement||document.msFullscreenElement;
+    if(already)return;
+    try{const p=fn.call(el);if(p&&p.catch)p.catch(()=>{});}catch(e){}
+    if(screen.orientation&&screen.orientation.lock){try{const p=screen.orientation.lock('landscape');if(p&&p.catch)p.catch(()=>{});}catch(e){}}
+}
+
 function startGame(){
+    tryFullscreen();
     state='play';phase='idle';phaseT=0.5;
     waveNum=0;score=0;kills=0;combo=0;comboT=0;comboX=1;shake=0;nextBoss=0;gameTime=0;paused=false;
     $pause.style.display='none';
