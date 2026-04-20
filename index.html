@@ -2,7 +2,10 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>doomzinho_fps</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
@@ -65,20 +68,56 @@ canvas{display:block}
 #crosshair::before{top:8px;left:0;width:18px;height:2px}
 #crosshair::after{left:8px;top:0;width:2px;height:18px}
 body.locked{cursor:none}
+/* ===== MOBILE ===== */
+.mbtn{position:fixed;pointer-events:auto;background:rgba(30,20,20,0.55);border:2px solid rgba(232,192,32,0.55);color:#e8c020;font-weight:bold;font-size:14px;border-radius:50%;display:none;align-items:center;justify-content:center;user-select:none;-webkit-tap-highlight-color:transparent;text-transform:uppercase;z-index:18;font-family:'Courier New',monospace}
+.mbtn.on{background:rgba(224,56,24,0.55);border-color:#e8c020;color:#fff}
+body.mobile.playing .mbtn{display:flex}
+#btn-fire{bottom:110px;right:20px;width:92px;height:92px;font-size:17px;border-color:rgba(224,56,24,0.75);color:#e03818}
+#btn-dash{bottom:215px;right:32px;width:62px;height:62px;font-size:12px}
+#btn-reload{bottom:110px;right:124px;width:62px;height:62px;font-size:22px}
+#btn-wep{top:60px;right:20px;width:62px;height:62px;font-size:12px}
+#btn-wep .dwn{font-size:15px;color:#e8c020;line-height:1}
+#btn-wep .dwl{font-size:9px;color:#888;line-height:1.2;margin-top:2px}
+#joy-base,#joy-knob{position:fixed;border-radius:50%;pointer-events:none;z-index:12;display:none}
+#joy-base{width:120px;height:120px;background:rgba(255,255,255,0.06);border:2px solid rgba(232,192,32,0.35)}
+#joy-knob{width:60px;height:60px;background:rgba(232,192,32,0.35);border:2px solid rgba(232,192,32,0.7)}
+body.mobile #joy-base.on,body.mobile #joy-knob.on{display:block}
+#portrait-warn{display:none;position:fixed;inset:0;background:#000;z-index:40;align-items:center;justify-content:center;flex-direction:column;color:#e8c020;font-size:20px;text-align:center;padding:20px;font-family:'Courier New',monospace}
+#portrait-warn .rot{font-size:50px;margin-bottom:20px;animation:rotHint 1.8s infinite}
+@keyframes rotHint{0%,100%{transform:rotate(0)}50%{transform:rotate(90deg)}}
+body.mobile #doom-hud{height:62px}
+body.mobile .dhud-value{font-size:20px}
+body.mobile .dhud-label{font-size:9px}
+body.mobile .dhud-section{padding:3px 10px}
+body.mobile #doom-face{width:52px;height:52px;margin:0 6px}
+body.mobile #dhud-hp-wrap{width:90px}
+body.mobile #dhud-weapons{gap:2px}
+body.mobile .dwep{padding:2px 4px;font-size:11px}
+body.mobile #hud-top div{font-size:12px}
+body.mobile #crosshair{top:calc(50% - 31px)}
+@media (orientation:portrait) and (max-width:900px){body.mobile #portrait-warn{display:flex}}
 </style>
 </head>
 <body>
 
 <div id="start-screen">
     <h1>doomzinho_fps</h1>
-    <p>
+    <p id="start-desktop">
         WASD - Mover &nbsp; Mouse - Olhar &nbsp; Click - Atirar<br>
         1-9: Pistol, Shotgun, Chaingun, Rocket, Plasma, Bomb, Molotov, Laser, Mega Bomb<br>
         Shift - Dash &nbsp; R - Recarregar &nbsp; ESC - Pause<br>
         Atire nos crates: arma ou munição<br>
         SEM CURA - Roguelike: morra e recomece
     </p>
-    <div class="go">[ CLICK PARA JOGAR ]</div>
+    <p id="start-mobile" style="display:none">
+        Toque esquerda: mover (joystick)<br>
+        Toque direita: olhar (arrasta)<br>
+        FIRE: atirar &nbsp; DASH: esquivar<br>
+        ↻: recarregar &nbsp; WEP: trocar arma<br>
+        Atire nos crates pra pegar arma/munição<br>
+        SEM CURA - morra e recomece
+    </p>
+    <div class="go">[ TOQUE PRA JOGAR ]</div>
 </div>
 
 <div id="game-over">
@@ -135,6 +174,13 @@ body.locked{cursor:none}
 <div id="hurt-vignette"></div>
 <div id="hurt-glitch"></div>
 <div id="crosshair"></div>
+<div id="joy-base"></div>
+<div id="joy-knob"></div>
+<div id="btn-fire" class="mbtn">FIRE</div>
+<div id="btn-dash" class="mbtn">DASH</div>
+<div id="btn-reload" class="mbtn">↻</div>
+<div id="btn-wep" class="mbtn"><div class="dwn" id="btn-wep-n">1</div><div class="dwl" id="btn-wep-l">PIS</div></div>
+<div id="portrait-warn"><div class="rot">📱</div><div>Gire o celular pra jogar<br>(landscape)</div></div>
 
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"}}</script>
 <script type="module">
@@ -415,9 +461,24 @@ function triggerDamageGlitch(){
     setTimeout(()=>{$hurtGlitch.style.opacity='0';},80);
 }
 
+// ===== MOBILE DETECTION =====
+const isMobile=('ontouchstart' in window)||(navigator.maxTouchPoints>0&&matchMedia('(pointer:coarse)').matches);
+if(isMobile){
+    document.body.classList.add('mobile');
+    renderer.setPixelRatio(1);
+    renderer.shadowMap.enabled=false;
+    scene.fog=new THREE.FogExp2(0x2a2230,0.006);
+    const sd=document.getElementById('start-desktop'),sm=document.getElementById('start-mobile');
+    if(sd)sd.style.display='none';if(sm)sm.style.display='block';
+}
+
 // ===== INPUT =====
 const keys={};let mDown=false,clicked=false;
 const MOUSE_SENS=0.0022;
+const TOUCH_LOOK_SENS=0.0045;
+let touchMove={fwd:0,str:0};
+let joyTouchId=null,joyStart=null;
+let lookTouchId=null,lookLast=null;
 
 addEventListener('keydown',e=>{keys[e.key.toLowerCase()]=true;if(e.key==='Escape'&&state==='play'){paused=!paused;$pause.style.display=paused?'flex':'none';if(paused&&document.pointerLockElement)document.exitPointerLock();}});
 addEventListener('keyup',e=>keys[e.key.toLowerCase()]=false);
@@ -432,7 +493,7 @@ addEventListener('mousemove',e=>{
 addEventListener('mousedown',e=>{
     if(e.button===0){
         mDown=true;clicked=true;
-        if(!document.pointerLockElement&&!paused){
+        if(!isMobile&&!document.pointerLockElement&&!paused){
             try{document.body.requestPointerLock();}catch(err){}
         }
     }
@@ -445,6 +506,86 @@ document.addEventListener('pointerlockchange',()=>{
         paused=true;$pause.style.display='flex';
     }
 });
+
+// ===== TOUCH CONTROLS =====
+function isBtnTarget(t){let n=t;while(n&&n!==document.body){if(n.classList&&n.classList.contains('mbtn'))return true;n=n.parentNode;}return false;}
+function showJoy(x,y){
+    const b=document.getElementById('joy-base'),k=document.getElementById('joy-knob');
+    b.style.left=(x-60)+'px';b.style.top=(y-60)+'px';
+    k.style.left=(x-30)+'px';k.style.top=(y-30)+'px';
+    b.classList.add('on');k.classList.add('on');
+}
+function updJoyKnob(sx,sy,tx,ty,mr){
+    const k=document.getElementById('joy-knob');
+    const dx=tx-sx,dy=ty-sy,m=Math.hypot(dx,dy);
+    const cm=Math.min(m,mr);
+    const nx=m>0?(dx/m)*cm:0,ny=m>0?(dy/m)*cm:0;
+    k.style.left=(sx+nx-30)+'px';k.style.top=(sy+ny-30)+'px';
+}
+function hideJoy(){
+    document.getElementById('joy-base').classList.remove('on');
+    document.getElementById('joy-knob').classList.remove('on');
+}
+function onTouchStart(e){
+    if(isBtnTarget(e.target))return; // buttons handle themselves
+    for(const t of e.changedTouches){
+        const x=t.clientX,y=t.clientY;
+        if(state==='menu'||state==='dead'||paused){clicked=true;mDown=true;continue;}
+        if(x<innerWidth/2){
+            if(joyTouchId===null){joyTouchId=t.identifier;joyStart={x,y};showJoy(x,y);}
+        }else{
+            if(lookTouchId===null){lookTouchId=t.identifier;lookLast={x,y};}
+        }
+    }
+    e.preventDefault();
+}
+function onTouchMove(e){
+    for(const t of e.changedTouches){
+        if(t.identifier===joyTouchId){
+            const jdx=t.clientX-joyStart.x,jdy=t.clientY-joyStart.y;
+            const m=Math.hypot(jdx,jdy),mr=55;
+            if(m>6){const n=Math.min(1,m/mr);touchMove.str=(jdx/m)*n;touchMove.fwd=-(jdy/m)*n;}
+            else{touchMove.str=0;touchMove.fwd=0;}
+            updJoyKnob(joyStart.x,joyStart.y,t.clientX,t.clientY,mr);
+        }else if(t.identifier===lookTouchId){
+            const dx=t.clientX-lookLast.x,dy=t.clientY-lookLast.y;
+            pl.angle+=dx*TOUCH_LOOK_SENS;
+            pl.pitch-=dy*TOUCH_LOOK_SENS;
+            if(pl.pitch>PITCH_MAX)pl.pitch=PITCH_MAX;
+            if(pl.pitch<-PITCH_MAX)pl.pitch=-PITCH_MAX;
+            lookLast={x:t.clientX,y:t.clientY};
+        }
+    }
+    e.preventDefault();
+}
+function onTouchEnd(e){
+    for(const t of e.changedTouches){
+        if(t.identifier===joyTouchId){joyTouchId=null;touchMove.str=0;touchMove.fwd=0;hideJoy();}
+        else if(t.identifier===lookTouchId){lookTouchId=null;}
+    }
+    mDown=false;
+}
+if(isMobile){
+    addEventListener('touchstart',onTouchStart,{passive:false});
+    addEventListener('touchmove',onTouchMove,{passive:false});
+    addEventListener('touchend',onTouchEnd,{passive:false});
+    addEventListener('touchcancel',onTouchEnd,{passive:false});
+    const bFire=document.getElementById('btn-fire');
+    bFire.addEventListener('touchstart',e=>{mDown=true;clicked=true;bFire.classList.add('on');e.stopPropagation();e.preventDefault();},{passive:false});
+    bFire.addEventListener('touchend',e=>{mDown=false;bFire.classList.remove('on');e.stopPropagation();e.preventDefault();},{passive:false});
+    const bDash=document.getElementById('btn-dash');
+    bDash.addEventListener('touchstart',e=>{keys['shift']=true;bDash.classList.add('on');e.stopPropagation();e.preventDefault();},{passive:false});
+    bDash.addEventListener('touchend',e=>{keys['shift']=false;bDash.classList.remove('on');e.stopPropagation();e.preventDefault();},{passive:false});
+    const bRld=document.getElementById('btn-reload');
+    bRld.addEventListener('touchstart',e=>{keys['r']=true;bRld.classList.add('on');requestAnimationFrame(()=>{keys['r']=false;bRld.classList.remove('on');});e.stopPropagation();e.preventDefault();},{passive:false});
+    const bWep=document.getElementById('btn-wep');
+    bWep.addEventListener('touchstart',e=>{
+        const ks=Object.keys(unlockedWeapons).map(Number).sort((a,b)=>a-b);
+        if(ks.length>0){const i=ks.indexOf(pl.wep);pl.wep=ks[(i+1)%ks.length];reloading=false;}
+        bWep.classList.add('on');setTimeout(()=>bWep.classList.remove('on'),120);
+        e.stopPropagation();e.preventDefault();
+    },{passive:false});
+}
 
 // ===== AUDIO =====
 let ac=null,mvol=null;
@@ -861,6 +1002,7 @@ function startGame(){
     reloading=false;reloadT=0;
     genMaze3D();
     $start.style.display='none';$over.style.display='none';$hud.style.display='block';$doomHud.classList.remove('hidden');$crosshair.style.display='block';
+    document.body.classList.add('playing');
     $hHi.textContent=hiScore;
     if(!musInt){initAudio();startMusic();}
     setMusMode('normal');
@@ -873,6 +1015,7 @@ function die(){
     $goStats.textContent=`Score: ${score} | Wave: ${waveNum} | Kills: ${kills} | Time: ${fmtTime(gameTime)}`;
     $goInput.value='';$goName.style.display='block';showRanking();
     $over.style.display='flex';$hud.style.display='none';$doomHud.classList.add('hidden');$crosshair.style.display='none';
+    document.body.classList.remove('playing');
     if(document.pointerLockElement)document.exitPointerLock();
     setTimeout(()=>$goInput.focus(),100);
 }
@@ -1128,14 +1271,18 @@ function update(dt){
         else{bp.mesh.material.opacity=0.6*(bp.life/bp.maxLife);}
     }
 
-    // Player - FPS movement (WASD relative to facing)
+    // Player - FPS movement (WASD + joystick, relative to facing)
     const fwdX=Math.cos(pl.angle),fwdZ=Math.sin(pl.angle);
     const rgtX=-Math.sin(pl.angle),rgtZ=Math.cos(pl.angle);
-    let dx=0,dz=0;
-    if(keys['w']||keys['arrowup']){dx+=fwdX;dz+=fwdZ;}
-    if(keys['s']||keys['arrowdown']){dx-=fwdX;dz-=fwdZ;}
-    if(keys['d']||keys['arrowright']){dx+=rgtX;dz+=rgtZ;}
-    if(keys['a']||keys['arrowleft']){dx-=rgtX;dz-=rgtZ;}
+    let mFwd=0,mStr=0;
+    if(keys['w']||keys['arrowup'])mFwd+=1;
+    if(keys['s']||keys['arrowdown'])mFwd-=1;
+    if(keys['d']||keys['arrowright'])mStr+=1;
+    if(keys['a']||keys['arrowleft'])mStr-=1;
+    mFwd+=touchMove.fwd;mStr+=touchMove.str;
+    const mMag=Math.hypot(mFwd,mStr);
+    if(mMag>1){mFwd/=mMag;mStr/=mMag;}
+    let dx=fwdX*mFwd+rgtX*mStr, dz=fwdZ*mFwd+rgtZ*mStr;
 
     if(keys['shift']&&pl.dashCd<=0&&(dx||dz)){pl.dashT=0.14;pl.dashCd=0.65;pl.inv=0.18;emitP(pl.x,pl.z,0x30a0b0,4,4);sfx.dash();}
     pl.dashCd=Math.max(0,pl.dashCd-dt);
@@ -1399,6 +1546,11 @@ function updateHUD(){
     }
     $dhWepName.textContent=WEAP[pl.wep].name;
     $dhWave.textContent=waveNum;
+    if(isMobile){
+        const bwn=document.getElementById('btn-wep-n'),bwl=document.getElementById('btn-wep-l');
+        if(bwn)bwn.textContent=pl.wep;
+        if(bwl)bwl.textContent=wN[pl.wep];
+    }
     // Face
     drawDoomFace(hpR,pl.hurtT>0);
 }
@@ -1414,7 +1566,7 @@ function adaptQuality(t){
             renderer.shadowMap.enabled=false;
             renderer.setPixelRatio(1);
             scene.fog=null;
-        }else if(_fpsAvg>45&&_qualityLow){
+        }else if(_fpsAvg>45&&_qualityLow&&!isMobile){
             _qualityLow=false;
             renderer.shadowMap.enabled=true;
             renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));
