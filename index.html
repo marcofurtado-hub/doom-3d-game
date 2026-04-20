@@ -60,6 +60,11 @@ canvas{display:block}
 #pause-screen span{color:#e03818;cursor:pointer;pointer-events:auto}
 #hurt-vignette{position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:9;opacity:0;
     background:radial-gradient(ellipse at center,transparent 40%,rgba(180,0,0,0.7) 100%);transition:opacity 0.05s}
+#crosshair{position:fixed;top:calc(50% - 45px);left:50%;width:18px;height:18px;margin:-9px 0 0 -9px;pointer-events:none;z-index:11;display:none}
+#crosshair::before,#crosshair::after{content:'';position:absolute;background:#e8c020;opacity:0.8}
+#crosshair::before{top:8px;left:0;width:18px;height:2px}
+#crosshair::after{left:8px;top:0;width:2px;height:18px}
+body.locked{cursor:none}
 </style>
 </head>
 <body>
@@ -67,7 +72,7 @@ canvas{display:block}
 <div id="start-screen">
     <h1>DOOM 3D</h1>
     <p>
-        WASD - Mover &nbsp; Mouse - Mirar &nbsp; Click - Atirar<br>
+        WASD - Mover &nbsp; Mouse - Olhar &nbsp; Click - Atirar<br>
         1-9: Pistol, Shotgun, Chaingun, Rocket, Plasma, Bomb, Molotov, Laser, Mega Bomb<br>
         Shift - Dash &nbsp; R - Recarregar &nbsp; ESC - Pause<br>
         Atire nos crates: arma ou munição<br>
@@ -129,6 +134,7 @@ canvas{display:block}
 <div id="announce"><h1></h1><h2></h2></div>
 <div id="hurt-vignette"></div>
 <div id="hurt-glitch"></div>
+<div id="crosshair"></div>
 
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"}}</script>
 <script type="module">
@@ -146,10 +152,11 @@ document.body.prepend(renderer.domElement);
 const scene = new THREE.Scene();
 scene.fog = new THREE.FogExp2(0x2a2230, 0.003);
 
-// Camera: perspective looking down at angle
-const camera = new THREE.PerspectiveCamera(50, innerWidth/innerHeight, 0.1, 200);
-camera.position.set(0, 26, 13);
-camera.lookAt(0, 0, 0);
+// Camera: first-person view at eye level
+const camera = new THREE.PerspectiveCamera(75, innerWidth/innerHeight, 0.05, 200);
+camera.position.set(0, 1.45, 0);
+camera.lookAt(1, 1.45, 0);
+scene.add(camera);
 
 addEventListener('resize', ()=>{
     renderer.setSize(innerWidth, innerHeight);
@@ -325,7 +332,7 @@ const $hWave=$('h-wave'),$hScore=$('h-score'),$hKills=$('h-kills'),$hHi=$('h-hi'
 const $hCombo=$('h-combo'),$waveInfo=$('wave-info');
 const $ann=$('announce'),$annH1=$ann.querySelector('h1'),$annH2=$ann.querySelector('h2');
 const $pause=$('pause-screen'),$hurtVig=$('hurt-vignette'),$hurtGlitch=$('hurt-glitch');
-const $doomHud=$('doom-hud'),$dhAmmo=$('dh-ammo'),$dhHp=$('dh-hp'),$dhHpBar=$('dhud-hp-bar');
+const $doomHud=$('doom-hud'),$dhAmmo=$('dh-ammo'),$dhHp=$('dh-hp'),$dhHpBar=$('dhud-hp-bar'),$crosshair=$('crosshair');
 const $dhWave=$('dh-wave'),$dhWepName=$('dh-wepname');
 const faceCanvas=$('face-canvas'),faceCtx=faceCanvas.getContext('2d');
 const $goStats=$('go-stats'),$goRank=$('go-ranking'),$goName=$('go-name'),$goInput=$('go-input');
@@ -400,21 +407,30 @@ function triggerDamageGlitch(){
 }
 
 // ===== INPUT =====
-const keys={};let mx=0,my=0,mDown=false,clicked=false;
-let mouseWorld=new THREE.Vector3();
-const raycaster=new THREE.Raycaster();
-const mousePlane=new THREE.Plane(new THREE.Vector3(0,1,0),0);
+const keys={};let mDown=false,clicked=false;
+const MOUSE_SENS=0.0022;
 
-addEventListener('keydown',e=>{keys[e.key.toLowerCase()]=true;if(e.key==='Escape'&&state==='play'){paused=!paused;$pause.style.display=paused?'flex':'none';}});
+addEventListener('keydown',e=>{keys[e.key.toLowerCase()]=true;if(e.key==='Escape'&&state==='play'){paused=!paused;$pause.style.display=paused?'flex':'none';if(paused&&document.pointerLockElement)document.exitPointerLock();}});
 addEventListener('keyup',e=>keys[e.key.toLowerCase()]=false);
-addEventListener('mousemove',e=>{mx=e.clientX;my=e.clientY;
-    const ndc=new THREE.Vector2((e.clientX/innerWidth)*2-1,-(e.clientY/innerHeight)*2+1);
-    raycaster.setFromCamera(ndc,camera);
-    raycaster.ray.intersectPlane(mousePlane,mouseWorld);
+addEventListener('mousemove',e=>{
+    if(document.pointerLockElement){pl.angle+=e.movementX*MOUSE_SENS;}
 });
-addEventListener('mousedown',e=>{if(e.button===0){mDown=true;clicked=true;}});
+addEventListener('mousedown',e=>{
+    if(e.button===0){
+        mDown=true;clicked=true;
+        if(!document.pointerLockElement&&!paused){
+            try{document.body.requestPointerLock();}catch(err){}
+        }
+    }
+});
 addEventListener('mouseup',e=>{if(e.button===0)mDown=false;});
 addEventListener('contextmenu',e=>e.preventDefault());
+document.addEventListener('pointerlockchange',()=>{
+    document.body.classList.toggle('locked',!!document.pointerLockElement);
+    if(state==='play'&&!document.pointerLockElement&&!paused){
+        paused=true;$pause.style.display='flex';
+    }
+});
 
 // ===== AUDIO =====
 let ac=null,mvol=null;
@@ -617,7 +633,21 @@ plLegR.position.set(0.12,0.38,0);plGroup.add(plLegR);
 const plGun=mkBoxMesh(0.1,0.1,0.7,0x555555);
 plGun.position.set(0.315,0.78,-0.35);plGroup.add(plGun);
 plGroup.position.y=0;
+plGroup.visible=false; // hidden in FPS view
 scene.add(plGroup);
+
+// First-person gun model (parented to camera)
+const fpGun=new THREE.Group();
+const fpBarrel=mkBoxMesh(0.09,0.09,0.42,0x555555,0x111111);
+fpBarrel.position.set(0.26,-0.22,-0.48);fpGun.add(fpBarrel);
+const fpHandle=mkBoxMesh(0.11,0.2,0.14,0x333333);
+fpHandle.position.set(0.26,-0.36,-0.25);fpGun.add(fpHandle);
+const fpTip=mkBoxMesh(0.11,0.11,0.05,0x222222);
+fpTip.position.set(0.26,-0.22,-0.71);fpGun.add(fpTip);
+const fpSight=mkBoxMesh(0.04,0.05,0.04,0xe8c020,0xe8c020);
+fpSight.position.set(0.26,-0.16,-0.65);fpGun.add(fpSight);
+fpGun.traverse(c=>{if(c.isMesh){c.castShadow=false;c.receiveShadow=false;}});
+camera.add(fpGun);
 
 // ===== ENTITY FACTORIES =====
 function mkEnemy(type,x,z){
@@ -722,11 +752,11 @@ function mkBoss(idx,x,z){
         spawnT:0.8,spawning:true,mesh,walkPhase:0,legL,legR};
 }
 
-function mkBullet(x,z,a,spd,dmg,sz,color,enemy,ric=0){
+function mkBullet(x,z,a,spd,dmg,sz,color,enemy,ric=0,y=1.15){
     const mesh=getPooledBulletMesh(sz,color);
-    mesh.position.set(x,0.4,z);scene.add(mesh);
+    mesh.position.set(x,y,z);scene.add(mesh);
     return{alive:true,x,z,vx:Math.cos(a)*spd,vz:Math.sin(a)*spd,dmg,sz,color,enemy,life:3,
-        mesh,ric,bounces:0,expl:false,fire:false,blast:0};
+        mesh,ric,bounces:0,expl:false,fire:false,blast:0,y};
 }
 
 function mkCrate(x,z){
@@ -799,7 +829,7 @@ function startGame(){
     state='play';phase='idle';phaseT=0.5;
     waveNum=0;score=0;kills=0;combo=0;comboT=0;comboX=1;shake=0;nextBoss=0;gameTime=0;paused=false;
     $pause.style.display='none';
-    pl.x=0;pl.z=0;pl.hp=20;pl.maxHp=20;pl.spd=10;pl.wep=1;pl.shotT=0;
+    pl.x=0;pl.z=0;pl.hp=20;pl.maxHp=20;pl.spd=12;pl.wep=1;pl.shotT=0;pl.angle=-Math.PI/2;
     pl.dmgM=1;pl.rateM=1;pl.dashCd=0;pl.dashT=0;pl.inv=0;pl.hurtT=0;pl.walkPhase=0;
     unlockedWeapons={1:true};
     // Clear entities
@@ -813,7 +843,7 @@ function startGame(){
     for(let w=2;w<=WC;w++)ammo[w]=0;
     reloading=false;reloadT=0;
     genMaze3D();
-    $start.style.display='none';$over.style.display='none';$hud.style.display='block';$doomHud.classList.remove('hidden');
+    $start.style.display='none';$over.style.display='none';$hud.style.display='block';$doomHud.classList.remove('hidden');$crosshair.style.display='block';
     $hHi.textContent=hiScore;
     if(!musInt){initAudio();startMusic();}
     setMusMode('normal');
@@ -825,7 +855,8 @@ function die(){
     stopMusic();sfx.explode();emitP(pl.x,pl.z,0xe03818,20,5);
     $goStats.textContent=`Score: ${score} | Wave: ${waveNum} | Kills: ${kills} | Time: ${fmtTime(gameTime)}`;
     $goInput.value='';$goName.style.display='block';showRanking();
-    $over.style.display='flex';$hud.style.display='none';$doomHud.classList.add('hidden');
+    $over.style.display='flex';$hud.style.display='none';$doomHud.classList.add('hidden');$crosshair.style.display='none';
+    if(document.pointerLockElement)document.exitPointerLock();
     setTimeout(()=>$goInput.focus(),100);
 }
 
@@ -850,7 +881,7 @@ function mkLaserBeam(x1,z1,x2,z2){
     const mat=new THREE.MeshBasicMaterial({color:0xff2020,transparent:true,opacity:0.9});
     mat.emissive=new THREE.Color(0xff0000);
     const beam=new THREE.Mesh(geo,mat);
-    beam.position.set((x1+x2)/2,0.5,(z1+z2)/2);
+    beam.position.set((x1+x2)/2,1.23,(z1+z2)/2);
     beam.rotation.y=-Math.atan2(dz,dx);
     scene.add(beam);
     laserBeams.push({mesh:beam,life:0.06});
@@ -863,8 +894,10 @@ function playerShoot(){
     const dmg=w.dmg*pl.dmgM;
 
     if(w.laser){
-        // Continuous laser beam - raycast through enemies
-        const a=pl.angle;const sx=pl.x+Math.cos(a)*1.0,sz=pl.z+Math.sin(a)*1.0;
+        // Continuous laser beam - raycast from gun tip
+        const a=pl.angle;
+        const lrX=-Math.sin(pl.angle),lrZ=Math.cos(pl.angle);
+        const sx=pl.x+Math.cos(a)*0.7+lrX*0.25,sz=pl.z+Math.sin(a)*0.7+lrZ*0.25;
         let ex=sx+Math.cos(a)*60,ez=sz+Math.sin(a)*60;
         // Clamp to arena walls
         const steps=120;const dx=Math.cos(a)*0.5,dz=Math.sin(a)*0.5;
@@ -896,14 +929,20 @@ function playerShoot(){
         return;
     }
 
+    // Gun-tip offset: forward + slight right (matches FP weapon at local +X)
+    const grX=-Math.sin(pl.angle),grZ=Math.cos(pl.angle);
+    const tipX=pl.x+Math.cos(pl.angle)*0.7+grX*0.25;
+    const tipZ=pl.z+Math.sin(pl.angle)*0.7+grZ*0.25;
+    const tipY=1.23;
     for(let i=0;i<w.count;i++){
         const sp=(Math.random()-0.5)*w.spread*2;const a=pl.angle+sp;
-        const b=mkBullet(pl.x+Math.cos(a)*1.0,pl.z+Math.sin(a)*1.0,a,w.spd,dmg,w.sz,w.color,false,w.ric||0);
+        const b=mkBullet(tipX,tipZ,a,w.spd,dmg,w.sz,w.color,false,w.ric||0,tipY);
         b.expl=w.expl||false;b.fire=w.fire||false;b.blast=w.blast||0;
-        // Attach dynamic light to bullet so it illuminates surroundings
         b.light = acquireBulletLight(w.color);
         bullets.push(b);
     }
+    // Recoil kick on FP gun
+    fpGun.position.z=0.08;
 }
 
 function enShoot(e){
@@ -1064,20 +1103,20 @@ function update(dt){
         else{bp.mesh.material.opacity=0.6*(bp.life/bp.maxLife);}
     }
 
-    // Player
+    // Player - FPS movement (WASD relative to facing)
+    const fwdX=Math.cos(pl.angle),fwdZ=Math.sin(pl.angle);
+    const rgtX=-Math.sin(pl.angle),rgtZ=Math.cos(pl.angle);
     let dx=0,dz=0;
-    if(keys['w']||keys['arrowup'])dz=-1;
-    if(keys['s']||keys['arrowdown'])dz=1;
-    if(keys['a']||keys['arrowleft'])dx=-1;
-    if(keys['d']||keys['arrowright'])dx=1;
+    if(keys['w']||keys['arrowup']){dx+=fwdX;dz+=fwdZ;}
+    if(keys['s']||keys['arrowdown']){dx-=fwdX;dz-=fwdZ;}
+    if(keys['d']||keys['arrowright']){dx+=rgtX;dz+=rgtZ;}
+    if(keys['a']||keys['arrowleft']){dx-=rgtX;dz-=rgtZ;}
 
-    if(keys['shift']&&pl.dashCd<=0&&(dx||dz)){pl.dashT=0.12;pl.dashCd=0.7;pl.inv=0.15;emitP(pl.x,pl.z,0x30a0b0,4,4);sfx.dash();}
+    if(keys['shift']&&pl.dashCd<=0&&(dx||dz)){pl.dashT=0.14;pl.dashCd=0.65;pl.inv=0.18;emitP(pl.x,pl.z,0x30a0b0,4,4);sfx.dash();}
     pl.dashCd=Math.max(0,pl.dashCd-dt);
-    let spd=pl.spd;if(pl.dashT>0){spd=28;pl.dashT-=dt;}
+    let spd=pl.spd;if(pl.dashT>0){spd=32;pl.dashT-=dt;}
     if(dx||dz){const l=Math.hypot(dx,dz);pl.x+=(dx/l)*spd*dt;pl.z+=(dz/l)*spd*dt;}
     clampA(pl);colInnerWalls(pl);
-
-    pl.angle=Math.atan2(mouseWorld.z-pl.z,mouseWorld.x-pl.x);
     for(let i=1;i<=WC;i++){if(keys[''+i]&&unlockedWeapons[i]){pl.wep=i;reloading=false;}}
     if(keys['r']&&!reloading&&pl.wep>1&&ammo[pl.wep]<WEAP[pl.wep].maxAmmo){reloading=true;reloadT=WEAP[pl.wep].rTime;keys['r']=false;}
     if(reloading){reloadT-=dt;if(reloadT<=0){reloading=false;ammo[pl.wep]=WEAP[pl.wep].maxAmmo;sfx.pickup();}}
@@ -1104,13 +1143,19 @@ function update(dt){
         plLegL.rotation.x*=0.85;plLegR.rotation.x*=0.85;plArmL.rotation.x*=0.85;plArmR.rotation.x*=0.85;
     }
 
-    // Update player mesh
+    // Update player mesh (hidden in FPS but keep state coherent)
     plGroup.position.set(pl.x,0,pl.z);
     plGroup.rotation.y=-pl.angle-Math.PI/2;
     plLight.position.set(pl.x,1.5,pl.z);
-    muzzleLight.position.set(pl.x+Math.cos(pl.angle)*1,1,pl.z+Math.sin(pl.angle)*1);
+    muzzleLight.position.set(pl.x+Math.cos(pl.angle)*0.9,1.25,pl.z+Math.sin(pl.angle)*0.9);
     plBody.material.color.setHex(pl.hurtT>0?0xe03818:0x3a7a3a);
     updateFlashlight();
+
+    // FP gun bob + recoil recovery
+    const moving=(dx||dz)?1:0;
+    if(moving){fpGun.position.x=0.004*Math.sin(pl.walkPhase*2);fpGun.position.y=-0.008*Math.abs(Math.sin(pl.walkPhase));}
+    else{fpGun.position.x*=0.85;fpGun.position.y*=0.85;}
+    fpGun.position.z*=0.82; // recoil recovery toward 0
 
     // Bullets
     for(const b of bullets){
@@ -1140,8 +1185,8 @@ function update(dt){
             sfx.ricochet();emitP(b.x,b.z,0xe8d040,2,2);
         }
         if(!b.alive)continue;
-        b.mesh.position.set(b.x,0.4,b.z);
-        if(b.light)b.light.position.set(b.x,0.5,b.z);
+        b.mesh.position.set(b.x,b.y||1.15,b.z);
+        if(b.light)b.light.position.set(b.x,(b.y||1.15)+0.1,b.z);
 
         if(!b.enemy){
             for(const e of enemies){if(!e.alive||e.spawning)continue;
@@ -1357,12 +1402,18 @@ function loop(t){
     adaptQuality(t);
     update(dt);
 
-    // Camera shake
+    // FPS camera at eye level with bob + shake
     const px=state==='play'?pl.x:0,pz=state==='play'?pl.z:0;
-    const basePos=new THREE.Vector3(px,26,pz+13);
-    if(shake>0){camera.position.set(basePos.x+(Math.random()-0.5)*shake*2,basePos.y,basePos.z+(Math.random()-0.5)*shake*2);}
-    else camera.position.copy(basePos);
-    camera.lookAt(px,0,pz);
+    const ang=state==='play'?pl.angle:0;
+    const bobY=state==='play'?Math.sin(pl.walkPhase)*0.05:0;
+    const bobX=state==='play'?Math.cos(pl.walkPhase*0.5)*0.03:0;
+    const eyeY=1.45+bobY+(pl.hurtT>0?-0.02:0);
+    // Strafe-perpendicular for small camera lean while bobbing
+    const rX=-Math.sin(ang),rZ=Math.cos(ang);
+    let cx=px+rX*bobX, cy=eyeY, cz=pz+rZ*bobX;
+    if(shake>0){cx+=(Math.random()-0.5)*shake*0.6;cy+=(Math.random()-0.5)*shake*0.4;cz+=(Math.random()-0.5)*shake*0.6;}
+    camera.position.set(cx,cy,cz);
+    camera.lookAt(px+Math.cos(ang), eyeY, pz+Math.sin(ang));
 
     // Red atmosphere pulse
     redLight.intensity=0.8+Math.sin(t*0.002)*0.2;
