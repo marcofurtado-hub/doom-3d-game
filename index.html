@@ -81,9 +81,9 @@ body.mobile.playing .mbtn{display:flex}
 #btn-fire{bottom:110px;right:20px;width:92px;height:92px;font-size:17px;border-color:rgba(224,56,24,0.75);color:#e03818}
 #btn-dash{bottom:215px;right:32px;width:62px;height:62px;font-size:12px}
 #btn-reload{bottom:110px;right:124px;width:62px;height:62px;font-size:22px}
-#btn-wep{top:60px;right:20px;width:62px;height:62px;font-size:12px}
-#btn-wep .dwn{font-size:15px;color:#e8c020;line-height:1}
-#btn-wep .dwl{font-size:9px;color:#888;line-height:1.2;margin-top:2px}
+#btn-wep-next{top:60px;right:20px;width:54px;height:54px;font-size:22px}
+#btn-wep-prev{top:60px;right:86px;width:54px;height:54px;font-size:22px}
+#btn-pause{bottom:14px;left:14px;width:44px;height:44px;font-size:18px;border-radius:8px;z-index:40}
 #joy-base,#joy-knob{position:fixed;border-radius:50%;pointer-events:none;z-index:12;display:none}
 #joy-base{width:120px;height:120px;background:rgba(255,255,255,0.06);border:2px solid rgba(232,192,32,0.35)}
 #joy-knob{width:60px;height:60px;background:rgba(232,192,32,0.35);border:2px solid rgba(232,192,32,0.7)}
@@ -206,7 +206,9 @@ body.mobile #crosshair{top:calc(50% - 31px)}
 <div id="btn-fire" class="mbtn">FIRE</div>
 <div id="btn-dash" class="mbtn">DASH</div>
 <div id="btn-reload" class="mbtn">↻</div>
-<div id="btn-wep" class="mbtn"><div class="dwn" id="btn-wep-n">1</div><div class="dwl" id="btn-wep-l">PIS</div></div>
+<div id="btn-wep-prev" class="mbtn">◀</div>
+<div id="btn-wep-next" class="mbtn">▶</div>
+<div id="btn-pause" class="mbtn">II</div>
 <div id="portrait-warn"><div class="rot">📱</div><div>Gire o celular pra jogar<br>(landscape)</div></div>
 
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"}}</script>
@@ -502,7 +504,7 @@ if(isMobile){
 // ===== INPUT =====
 const keys={};let mDown=false,clicked=false;
 const MOUSE_SENS=0.0022;
-const TOUCH_LOOK_SENS=0.0045;
+const TOUCH_LOOK_SENS=0.0105; // mobile look sensitivity (higher = pouco movimento olha mais)
 let touchMove={fwd:0,str:0};
 let joyTouchId=null,joyStart=null;
 // Multiple fingers can contribute to look. Map: touchId -> {x,y}
@@ -510,7 +512,7 @@ const lookTouches=new Map();
 function addLook(id,x,y){lookTouches.set(id,{x,y});}
 function removeLook(id){lookTouches.delete(id);}
 
-addEventListener('keydown',e=>{keys[e.key.toLowerCase()]=true;if(e.key==='Escape'&&state==='play'){paused=!paused;$pause.style.display=paused?'flex':'none';if(paused&&document.pointerLockElement)document.exitPointerLock();}});
+addEventListener('keydown',e=>{keys[e.key.toLowerCase()]=true;if(e.key==='Escape'&&state==='play'){paused=!paused;$pause.style.display=paused?'flex':'none';if(paused&&document.pointerLockElement)document.exitPointerLock();const bp=document.getElementById('btn-pause');if(bp)bp.textContent=paused?'▶':'II';}});
 addEventListener('keyup',e=>keys[e.key.toLowerCase()]=false);
 addEventListener('mousemove',e=>{
     if(document.pointerLockElement){
@@ -625,16 +627,32 @@ if(isMobile){
     bRld.addEventListener('touchend',e=>{unregisterLookTouches(e);e.stopPropagation();e.preventDefault();},{passive:false});
     bRld.addEventListener('touchcancel',e=>{unregisterLookTouches(e);e.stopPropagation();e.preventDefault();},{passive:false});
 
-    const bWep=document.getElementById('btn-wep');
-    bWep.addEventListener('touchstart',e=>{
+    // Weapon cycle arrows (prev/next)
+    const cycleWep=dir=>{
         const ks=Object.keys(unlockedWeapons).map(Number).sort((a,b)=>a-b);
-        if(ks.length>0){const i=ks.indexOf(pl.wep);pl.wep=ks[(i+1)%ks.length];reloading=false;pl.shotT=0;}
-        bWep.classList.add('on');setTimeout(()=>bWep.classList.remove('on'),120);
-        registerLookTouches(e);
+        if(!ks.length)return;
+        const i=Math.max(0,ks.indexOf(pl.wep));
+        pl.wep=ks[(i+dir+ks.length)%ks.length];
+        reloading=false;pl.shotT=0;
+    };
+    const bWepNext=document.getElementById('btn-wep-next');
+    bWepNext.addEventListener('touchstart',e=>{cycleWep(1);bWepNext.classList.add('on');setTimeout(()=>bWepNext.classList.remove('on'),100);registerLookTouches(e);e.stopPropagation();e.preventDefault();},{passive:false});
+    bWepNext.addEventListener('touchend',e=>{unregisterLookTouches(e);e.stopPropagation();e.preventDefault();},{passive:false});
+    bWepNext.addEventListener('touchcancel',e=>{unregisterLookTouches(e);e.stopPropagation();e.preventDefault();},{passive:false});
+    const bWepPrev=document.getElementById('btn-wep-prev');
+    bWepPrev.addEventListener('touchstart',e=>{cycleWep(-1);bWepPrev.classList.add('on');setTimeout(()=>bWepPrev.classList.remove('on'),100);registerLookTouches(e);e.stopPropagation();e.preventDefault();},{passive:false});
+    bWepPrev.addEventListener('touchend',e=>{unregisterLookTouches(e);e.stopPropagation();e.preventDefault();},{passive:false});
+    bWepPrev.addEventListener('touchcancel',e=>{unregisterLookTouches(e);e.stopPropagation();e.preventDefault();},{passive:false});
+
+    // Pause button - toggles paused. High z-index so it's tappable even with pause overlay up.
+    const bPause=document.getElementById('btn-pause');
+    bPause.addEventListener('touchstart',e=>{
+        if(state==='play'){
+            paused=!paused;$pause.style.display=paused?'flex':'none';
+            bPause.textContent=paused?'▶':'II';
+        }
         e.stopPropagation();e.preventDefault();
     },{passive:false});
-    bWep.addEventListener('touchend',e=>{unregisterLookTouches(e);e.stopPropagation();e.preventDefault();},{passive:false});
-    bWep.addEventListener('touchcancel',e=>{unregisterLookTouches(e);e.stopPropagation();e.preventDefault();},{passive:false});
 }
 
 // ===== AUDIO =====
@@ -1736,11 +1754,6 @@ function updateHUD(){
     }
     $dhWepName.textContent=WEAP[pl.wep].name;
     $dhWave.textContent=waveNum;
-    if(isMobile){
-        const bwn=document.getElementById('btn-wep-n'),bwl=document.getElementById('btn-wep-l');
-        if(bwn)bwn.textContent=pl.wep;
-        if(bwl)bwl.textContent=wN[pl.wep];
-    }
     // Face
     drawDoomFace(hpR,pl.hurtT>0);
 }
