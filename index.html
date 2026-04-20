@@ -192,11 +192,11 @@ renderer.setSize(innerWidth, innerHeight);
 renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFShadowMap;
-renderer.setClearColor(0x2a2230);
+renderer.setClearColor(0x000000);
 document.body.prepend(renderer.domElement);
 
 const scene = new THREE.Scene();
-scene.fog = new THREE.FogExp2(0x2a2230, 0.003);
+scene.fog = new THREE.Fog(0x000000, 9, 30); // smooth black fade (DoF-like)
 
 // Camera: first-person view at eye level
 const camera = new THREE.PerspectiveCamera(75, innerWidth/innerHeight, 0.05, 200);
@@ -264,7 +264,7 @@ scene.add(floor);
 
 // Ceiling - darker
 const ceilGeo = new THREE.PlaneGeometry(AW, AH);
-const ceilMat = new THREE.MeshLambertMaterial({color:0x120a12});
+const ceilMat = new THREE.MeshLambertMaterial({color:0x060408});
 const ceiling = new THREE.Mesh(ceilGeo, ceilMat);
 ceiling.rotation.x = Math.PI/2;
 ceiling.position.y = WALL_H;
@@ -467,7 +467,7 @@ if(isMobile){
     document.body.classList.add('mobile');
     renderer.setPixelRatio(1);
     renderer.shadowMap.enabled=false;
-    scene.fog=new THREE.FogExp2(0x2a2230,0.006);
+    scene.fog=new THREE.Fog(0x000000,6,22);
     const sd=document.getElementById('start-desktop'),sm=document.getElementById('start-mobile');
     if(sd)sd.style.display='none';if(sm)sm.style.display='block';
 }
@@ -563,7 +563,7 @@ function onTouchEnd(e){
         if(t.identifier===joyTouchId){joyTouchId=null;touchMove.str=0;touchMove.fwd=0;hideJoy();}
         else if(t.identifier===lookTouchId){lookTouchId=null;}
     }
-    mDown=false;
+    // note: mDown is controlled by fire button handlers only, not global touchend
 }
 if(isMobile){
     addEventListener('touchstart',onTouchStart,{passive:false});
@@ -571,8 +571,11 @@ if(isMobile){
     addEventListener('touchend',onTouchEnd,{passive:false});
     addEventListener('touchcancel',onTouchEnd,{passive:false});
     const bFire=document.getElementById('btn-fire');
-    bFire.addEventListener('touchstart',e=>{mDown=true;clicked=true;bFire.classList.add('on');e.stopPropagation();e.preventDefault();},{passive:false});
-    bFire.addEventListener('touchend',e=>{mDown=false;bFire.classList.remove('on');e.stopPropagation();e.preventDefault();},{passive:false});
+    const fireOn=e=>{mDown=true;clicked=true;bFire.classList.add('on');e.stopPropagation();e.preventDefault();};
+    const fireOff=e=>{mDown=false;bFire.classList.remove('on');e.stopPropagation();e.preventDefault();};
+    bFire.addEventListener('touchstart',fireOn,{passive:false});
+    bFire.addEventListener('touchend',fireOff,{passive:false});
+    bFire.addEventListener('touchcancel',fireOff,{passive:false});
     const bDash=document.getElementById('btn-dash');
     bDash.addEventListener('touchstart',e=>{keys['shift']=true;bDash.classList.add('on');e.stopPropagation();e.preventDefault();},{passive:false});
     bDash.addEventListener('touchend',e=>{keys['shift']=false;bDash.classList.remove('on');e.stopPropagation();e.preventDefault();},{passive:false});
@@ -581,7 +584,7 @@ if(isMobile){
     const bWep=document.getElementById('btn-wep');
     bWep.addEventListener('touchstart',e=>{
         const ks=Object.keys(unlockedWeapons).map(Number).sort((a,b)=>a-b);
-        if(ks.length>0){const i=ks.indexOf(pl.wep);pl.wep=ks[(i+1)%ks.length];reloading=false;}
+        if(ks.length>0){const i=ks.indexOf(pl.wep);pl.wep=ks[(i+1)%ks.length];reloading=false;pl.shotT=0;}
         bWep.classList.add('on');setTimeout(()=>bWep.classList.remove('on'),120);
         e.stopPropagation();e.preventDefault();
     },{passive:false});
@@ -1267,8 +1270,9 @@ function mkWallSplat(wx,wz,axis,col,size){
     const geo=new THREE.CylinderGeometry(size,size,0.01,8);
     const mat=new THREE.MeshBasicMaterial({color:col,transparent:true,opacity:0.6+Math.random()*0.2});
     const m=new THREE.Mesh(geo,mat);
-    if(axis==='x'){m.rotation.z=Math.PI/2;m.position.set(wx,0.5+Math.random()*1.5,wz);}
-    else{m.rotation.x=Math.PI/2;m.position.set(wx,0.5+Math.random()*1.5,wz);}
+    const hY=Math.min(WALL_H-0.3,0.3+Math.random()*1.5); // keep splat below ceiling
+    if(axis==='x'){m.rotation.z=Math.PI/2;m.position.set(wx,hY,wz);}
+    else{m.rotation.x=Math.PI/2;m.position.set(wx,hY,wz);}
     scene.add(m);
     bloodPools.push({mesh:m,life:8.0,maxLife:8.0});
 }
@@ -1309,19 +1313,30 @@ function bloodExplosion(x,z,r){
     trimBloodPools();
     // WALL SPLATS: reduced - only 1 per wall face
     const wallDist=2.5;
-    if(x>HW-wallDist) mkWallSplat(HW+WALL_T/2-0.05,z+(Math.random()-0.5)*2,'x',darkReds[Math.floor(Math.random()*darkReds.length)],0.2+Math.random()*0.3);
-    if(x<-HW+wallDist) mkWallSplat(-HW-WALL_T/2+0.05,z+(Math.random()-0.5)*2,'x',darkReds[Math.floor(Math.random()*darkReds.length)],0.2+Math.random()*0.3);
-    if(z>HH-wallDist) mkWallSplat(x+(Math.random()-0.5)*2,HH+WALL_T/2-0.05,'z',darkReds[Math.floor(Math.random()*darkReds.length)],0.2+Math.random()*0.3);
-    if(z<-HH+wallDist) mkWallSplat(x+(Math.random()-0.5)*2,-HH-WALL_T/2+0.05,'z',darkReds[Math.floor(Math.random()*darkReds.length)],0.2+Math.random()*0.3);
-    // Inner walls - single splat
+    const cR=()=>darkReds[Math.floor(Math.random()*darkReds.length)];
+    const cl=(v,lo,hi)=>Math.max(lo,Math.min(hi,v));
+    // Outer walls: clamp lateral offset so splat stays within the wall panel
+    if(x>HW-wallDist) mkWallSplat(HW+WALL_T/2-0.05,cl(z+(Math.random()-0.5)*2,-HH+0.3,HH-0.3),'x',cR(),0.2+Math.random()*0.3);
+    if(x<-HW+wallDist) mkWallSplat(-HW-WALL_T/2+0.05,cl(z+(Math.random()-0.5)*2,-HH+0.3,HH-0.3),'x',cR(),0.2+Math.random()*0.3);
+    if(z>HH-wallDist) mkWallSplat(cl(x+(Math.random()-0.5)*2,-HW+0.3,HW-0.3),HH+WALL_T/2-0.05,'z',cR(),0.2+Math.random()*0.3);
+    if(z<-HH+wallDist) mkWallSplat(cl(x+(Math.random()-0.5)*2,-HW+0.3,HW-0.3),-HH-WALL_T/2+0.05,'z',cR(),0.2+Math.random()*0.3);
+    // Inner walls - clamp splat position to wall's own extent so it doesn't float in air
     for(const w of innerWalls){
         const hw=w.w/2,hd=w.d/2;
         const ddx=x-w.x,ddz=z-w.z;
+        // only if enemy is close AND roughly in front of the wall face
         if(Math.abs(ddx)<hw+wallDist&&Math.abs(ddz)<hd+wallDist){
-            if(w.w>w.d){
-                mkWallSplat(x+(Math.random()-0.5)*1.5,ddz>0?w.z+hd+0.05:w.z-hd-0.05,'z',darkReds[Math.floor(Math.random()*darkReds.length)],0.15+Math.random()*0.25);
+            if(w.w>w.d){ // horizontal wall (long on X), splats on ±Z faces
+                // clamp splat x to wall's x range, require ddx inside the wall width
+                if(Math.abs(ddx)>hw+0.2)continue; // too far past the ends = skip
+                const sX=cl(w.x+ddx*0.5+(Math.random()-0.5)*0.6,w.x-hw+0.1,w.x+hw-0.1);
+                const sZ=ddz>0?w.z+hd+0.02:w.z-hd-0.02;
+                mkWallSplat(sX,sZ,'z',cR(),0.15+Math.random()*0.25);
             }else{
-                mkWallSplat(ddx>0?w.x+hw+0.05:w.x-hw-0.05,z+(Math.random()-0.5)*1.5,'x',darkReds[Math.floor(Math.random()*darkReds.length)],0.15+Math.random()*0.25);
+                if(Math.abs(ddz)>hd+0.2)continue;
+                const sZ=cl(w.z+ddz*0.5+(Math.random()-0.5)*0.6,w.z-hd+0.1,w.z+hd-0.1);
+                const sX=ddx>0?w.x+hw+0.02:w.x-hw-0.02;
+                mkWallSplat(sX,sZ,'x',cR(),0.15+Math.random()*0.25);
             }
         }
     }
@@ -1398,9 +1413,11 @@ function update(dt){
     if(keys['shift']&&pl.dashCd<=0&&(dx||dz)){pl.dashT=0.14;pl.dashCd=0.65;pl.inv=0.18;emitP(pl.x,pl.z,0x30a0b0,4,4);sfx.dash();}
     pl.dashCd=Math.max(0,pl.dashCd-dt);
     let spd=pl.spd;if(pl.dashT>0){spd=32;pl.dashT-=dt;}
-    if(dx||dz){const l=Math.hypot(dx,dz);pl.x+=(dx/l)*spd*dt;pl.z+=(dz/l)*spd*dt;}
+    // dx/dz already have magnitude 0..1 (clamped above). Analog: partial joystick = slower.
+    const mvL=Math.hypot(dx,dz);
+    if(mvL>0.01){pl.x+=dx*spd*dt;pl.z+=dz*spd*dt;}
     clampA(pl);colInnerWalls(pl);
-    for(let i=1;i<=WC;i++){if(keys[''+i]&&unlockedWeapons[i]){pl.wep=i;reloading=false;}}
+    for(let i=1;i<=WC;i++){if(keys[''+i]&&unlockedWeapons[i]&&pl.wep!==i){pl.wep=i;reloading=false;pl.shotT=0;}}
     if(keys['r']&&!reloading&&pl.wep>1&&ammo[pl.wep]<WEAP[pl.wep].maxAmmo){reloading=true;reloadT=WEAP[pl.wep].rTime;keys['r']=false;}
     if(reloading){reloadT-=dt;if(reloadT<=0){reloading=false;ammo[pl.wep]=WEAP[pl.wep].maxAmmo;sfx.pickup();}}
 
@@ -1495,7 +1512,7 @@ function update(dt){
                 b.alive=false;scene.remove(b.mesh);returnBulletToPool(b.mesh);if(b.light){releaseBulletLight(b.light);b.light=null;};break;}}
             if(b.alive)for(const cr of crates){if(!cr.alive||cr.spawnT>0)continue;
                 if(dst(b,cr)<cr.r+b.sz&&b.y<1.0){
-                    if(cr.kind==='wep'){pl.wep=cr.wi;if(cr.wi>1)ammo[cr.wi]=WEAP[cr.wi].maxAmmo;reloading=false;announce(WEAP[cr.wi].name,'',1000);}
+                    if(cr.kind==='wep'){pl.wep=cr.wi;if(cr.wi>1)ammo[cr.wi]=WEAP[cr.wi].maxAmmo;reloading=false;pl.shotT=0;announce(WEAP[cr.wi].name,'',1000);}
                     else{for(let w=2;w<=WC;w++){if(unlockedWeapons[w])ammo[w]=Math.min(WEAP[w].maxAmmo,ammo[w]+Math.ceil(WEAP[w].maxAmmo*0.15));}announce('+AMMO','',800);}
                     emitP(cr.x,cr.z,0xc8a010,8,3);sfx.pickup();cr.alive=false;scene.remove(cr.mesh);b.alive=false;scene.remove(b.mesh);returnBulletToPool(b.mesh);if(b.light){releaseBulletLight(b.light);b.light=null;};break;}}
         }else{
@@ -1689,12 +1706,12 @@ function adaptQuality(t){
             _qualityLow=true;
             renderer.shadowMap.enabled=false;
             renderer.setPixelRatio(1);
-            scene.fog=null;
+            scene.fog=new THREE.Fog(0x000000,5,18); // tighter fog for perf
         }else if(_fpsAvg>45&&_qualityLow&&!isMobile){
             _qualityLow=false;
             renderer.shadowMap.enabled=true;
             renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));
-            scene.fog=new THREE.FogExp2(0x2a2230,0.003);
+            scene.fog=new THREE.Fog(0x000000,9,30);
         }
     }
 }
