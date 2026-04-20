@@ -821,13 +821,23 @@ function buildFPWeapon(id){
         _fpPart(0.11,0.08,0.2,0x7a5020,X,Y-0.07,-0.55); // pump
         _fpPart(0.13,0.16,0.2,0x5a3a20,X,Y-0.04,-0.18); // stock
         _fpPart(0.04,0.04,0.03,0xe8c020,X,Y+0.14,-0.7,0xe8c020);
-    }else if(id===3){ // CHAINGUN - rotary barrels
+    }else if(id===3){ // CHAINGUN - rotary barrels (in spin sub-group)
         _fpPart(0.16,0.16,0.3,0x444444,X,Y,-0.4,0x111111);
+        const spin=new THREE.Group();
+        spin.position.set(X,Y,-0.58); // pivot at barrel cluster center
         for(let i=0;i<6;i++){
             const a=(Math.PI*2/6)*i;
-            _fpPart(0.035,0.035,0.48,0x2a2a2a,X+Math.cos(a)*0.07,Y+Math.sin(a)*0.07,-0.58);
+            const bar=mkBoxMesh(0.035,0.035,0.48,0x2a2a2a);
+            bar.castShadow=false;bar.receiveShadow=false;
+            bar.position.set(Math.cos(a)*0.07,Math.sin(a)*0.07,0);
+            spin.add(bar);
         }
-        _fpPart(0.17,0.04,0.05,0x333333,X,Y,-0.82); // front ring
+        const ring=mkBoxMesh(0.17,0.04,0.05,0x333333);
+        ring.castShadow=false;ring.receiveShadow=false;
+        ring.position.set(0,0,-0.24);
+        spin.add(ring);
+        spin.userData.isSpin=true;
+        fpGun.add(spin);
         _fpPart(0.16,0.1,0.1,0x222222,X,Y-0.13,-0.3); // ammo feed
         _fpPart(0.11,0.18,0.14,0x222222,X,Y-0.18,-0.18); // grip
     }else if(id===4){ // ROCKET LAUNCHER - big green tube with red warhead
@@ -1431,9 +1441,17 @@ function update(dt){
     if(moving){fpGun.position.x=0.004*Math.sin(pl.walkPhase*2);fpGun.position.y=-0.008*Math.abs(Math.sin(pl.walkPhase));}
     else{fpGun.position.x*=0.85;fpGun.position.y*=0.85;}
     fpGun.position.z*=0.82; // recoil recovery toward 0
-    // Chaingun rotary spin when firing
-    if(pl.wep===3&&mDown&&!reloading){fpGun.rotation.z+=dt*28;}
-    else{fpGun.rotation.z*=0.9;}
+    // Chaingun rotary barrels spin (only the sub-group, not whole gun)
+    fpGun.rotation.z=0;
+    if(pl.wep===3){
+        const spinning=mDown&&!reloading;
+        for(const child of fpGun.children){
+            if(child.userData&&child.userData.isSpin){
+                if(spinning)child.rotation.z+=dt*28;
+                else child.rotation.z+=dt*4; // slow idle spin
+            }
+        }
+    }
 
     // Bullets
     for(const b of bullets){
