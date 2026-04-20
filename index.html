@@ -44,10 +44,16 @@ canvas{display:block}
 #announce{position:fixed;top:45%;left:50%;transform:translate(-50%,-50%);text-align:center;pointer-events:none;z-index:20;opacity:0;transition:opacity 0.3s}
 #announce h1{font-size:48px;color:#e03818;text-shadow:0 0 20px rgba(224,56,24,0.5)}
 #announce h2{font-size:24px;color:#d06020;margin-top:4px}
-#start-screen{position:fixed;top:0;left:0;width:100%;height:100%;display:flex;flex-direction:column;justify-content:center;align-items:center;background:rgba(0,0,0,0.85);z-index:30}
-#start-screen h1{font-size:72px;color:#e03818;text-shadow:0 0 30px rgba(224,56,24,0.6)}
-#start-screen p{color:#888;font-size:15px;margin-top:12px;line-height:1.8;text-align:center}
-#start-screen .go{color:#e03818;font-size:24px;margin-top:24px;animation:pulse 1.5s infinite}
+#start-screen{position:fixed;top:0;left:0;width:100%;height:100%;display:flex;flex-direction:column;justify-content:center;align-items:center;background:rgba(0,0,0,0.92);z-index:30;padding:20px;box-sizing:border-box}
+#start-screen h1{font-size:68px;color:#e03818;text-shadow:0 0 30px rgba(224,56,24,0.6);letter-spacing:4px}
+#start-screen .sub{color:#8a6a50;font-size:12px;letter-spacing:3px;margin-top:2px;text-transform:uppercase}
+#start-screen .panel{background:rgba(20,10,12,0.6);border:1px solid rgba(224,56,24,0.3);padding:14px 26px;margin-top:14px;max-width:560px;text-align:left}
+#start-screen .hd{display:block;color:#e03818;font-size:13px;font-weight:bold;letter-spacing:3px;margin-bottom:6px;text-transform:uppercase}
+#start-screen p{color:#b8a090;font-size:13px;margin:0;line-height:1.75;text-align:left}
+#start-screen p + p{margin-top:10px}
+#start-screen .hl{color:#e8c020}
+#start-screen .red{color:#e03818}
+#start-screen .go{color:#e03818;font-size:22px;margin-top:20px;animation:pulse 1.5s infinite;letter-spacing:2px}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}
 #game-over{position:fixed;top:0;left:0;width:100%;height:100%;display:none;flex-direction:column;justify-content:center;align-items:center;background:rgba(0,0,0,0.8);z-index:30}
 #game-over h1{font-size:56px;color:#e03818}
@@ -102,22 +108,43 @@ body.mobile #crosshair{top:calc(50% - 31px)}
 
 <div id="start-screen">
     <h1>doomzinho_fps</h1>
-    <p id="start-desktop">
-        WASD - Mover &nbsp; Mouse - Olhar &nbsp; Click - Atirar<br>
-        1-9: Pistol, Shotgun, Chaingun, Rocket, Plasma, Bomb, Molotov, Laser, Mega Bomb<br>
-        Shift - Dash &nbsp; R - Recarregar &nbsp; ESC - Pause<br>
-        Atire nos crates: arma ou munição<br>
-        SEM CURA - Roguelike: morra e recomece
-    </p>
-    <p id="start-mobile" style="display:none">
-        Toque esquerda: mover (joystick)<br>
-        Toque direita: olhar (arrasta)<br>
-        FIRE: atirar &nbsp; DASH: esquivar<br>
-        ↻: recarregar &nbsp; WEP: trocar arma<br>
-        Atire nos crates pra pegar arma/munição<br>
-        SEM CURA - morra e recomece
-    </p>
-    <div class="go">[ TOQUE PRA JOGAR ]</div>
+    <div class="sub">arena shooter · roguelike · demon hell</div>
+
+    <div class="panel" id="start-desktop">
+        <span class="hd">🎮 controles</span>
+        <p>
+        <span class="hl">WASD</span> mover · <span class="hl">MOUSE</span> olhar (yaw + pitch) · <span class="hl">CLICK</span> atirar<br>
+        <span class="hl">1-9</span> trocar arma · <span class="hl">SHIFT</span> dash · <span class="hl">R</span> recarregar · <span class="hl">ESC</span> pausar
+        </p>
+        <span class="hd" style="margin-top:12px">⚔️ como funciona</span>
+        <p>
+        ▸ Cada <span class="red">kill</span> cura HP proporcional à força do inimigo<br>
+        ▸ <span class="red">BOSS</span> derrotado = <span class="hl">CURA TOTAL</span> + upgrade + arma nova<br>
+        ▸ Balas <span class="hl">ricocheteiam</span> em paredes, chão e teto<br>
+        ▸ Atire nos <span class="hl">crates</span> pra soltar arma ou munição<br>
+        ▸ Sem checkpoint — morreu, recomeça do zero (<span class="red">roguelike</span>)
+        </p>
+    </div>
+
+    <div class="panel" id="start-mobile" style="display:none">
+        <span class="hd">📱 controles</span>
+        <p>
+        <span class="hl">Lado esquerdo</span>: toque arrasta = joystick pra mover (analógico)<br>
+        <span class="hl">Lado direito</span>: arrasta pra olhar (yaw + pitch)<br>
+        <span class="hl">FIRE</span> atirar · <span class="hl">DASH</span> esquiva · <span class="hl">↻</span> recarregar · <span class="hl">WEP</span> trocar arma<br>
+        Pode <span class="hl">atirar e mirar ao mesmo tempo</span> — o dedo no botão também rotaciona a câmera
+        </p>
+        <span class="hd" style="margin-top:12px">⚔️ como funciona</span>
+        <p>
+        ▸ Cada <span class="red">kill</span> cura HP (mais forte o inimigo, mais cura)<br>
+        ▸ <span class="red">BOSS</span> = <span class="hl">CURA TOTAL</span> + upgrade + arma nova<br>
+        ▸ Balas ricocheteiam em paredes, chão e teto<br>
+        ▸ Atire nos crates pra soltar arma/munição<br>
+        ▸ Morreu = recomeça do zero (<span class="red">roguelike</span>)
+        </p>
+    </div>
+
+    <div class="go">[ TOQUE PRA COMEÇAR ]</div>
 </div>
 
 <div id="game-over">
@@ -496,7 +523,9 @@ addEventListener('mousemove',e=>{
 addEventListener('mousedown',e=>{
     if(e.button===0){
         mDown=true;clicked=true;
-        if(!isMobile&&!document.pointerLockElement&&!paused){
+        // Only grab pointer lock during menu->play or while playing.
+        // Never during 'dead' (would break SAVE/RESTART buttons) or pause.
+        if(!isMobile&&!paused&&!document.pointerLockElement&&(state==='menu'||state==='play')){
             try{document.body.requestPointerLock();}catch(err){}
         }
     }
@@ -1103,6 +1132,8 @@ function startGame(){
     genMaze3D();
     $start.style.display='none';$over.style.display='none';$hud.style.display='block';$doomHud.classList.remove('hidden');$crosshair.style.display='block';
     document.body.classList.add('playing');
+    // Try to (re)grab pointer lock when restarting in a user gesture
+    if(!isMobile&&!document.pointerLockElement){try{document.body.requestPointerLock();}catch(err){}}
     $hHi.textContent=hiScore;
     if(!musInt){initAudio();startMusic();}
     setMusMode('normal');
