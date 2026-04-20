@@ -171,37 +171,37 @@ redLight.position.set(0, 8, 0);
 scene.add(redLight);
 
 // Strong warm glow around player (keeps player + close enemies visible)
-const plLight = new THREE.PointLight(0xffb070, 2.5, 8);
+const plLight = new THREE.PointLight(0xffb070, 3.1, 9);
 plLight.position.set(0, 1.5, 0);
 scene.add(plLight);
 
-// Muzzle flash light
-const muzzleLight = new THREE.PointLight(0xe8c020, 0, 10);
+// Muzzle flash light - big punchy glow
+const muzzleLight = new THREE.PointLight(0xffd060, 0, 14);
 muzzleLight.position.set(0, 1, 0);
 scene.add(muzzleLight);
 
 // ===== FLASHLIGHT SYSTEM =====
-// Main beam - POWERFUL, wider, long reach
-const flashlight = new THREE.SpotLight(0xfff5d8, 60, 28, Math.PI/6, 0.4, 1.0);
+// Main beam - POWERFUL, wider, long reach (+25%)
+const flashlight = new THREE.SpotLight(0xfff5d8, 75, 30, Math.PI/6, 0.4, 1.0);
 flashlight.position.set(0, 1.6, 0);
 flashlight.target = new THREE.Object3D();
 scene.add(flashlight);
 scene.add(flashlight.target);
 
-// Wider halo - strong lateral fill
-const flashHalo = new THREE.SpotLight(0xffe8b8, 18, 15, Math.PI/2.8, 0.85, 1.3);
+// Wider halo - strong lateral fill (+25%)
+const flashHalo = new THREE.SpotLight(0xffe8b8, 22, 16, Math.PI/2.8, 0.85, 1.3);
 flashHalo.position.set(0, 1.6, 0);
 flashHalo.target = new THREE.Object3D();
 scene.add(flashHalo);
 scene.add(flashHalo.target);
 
-// Fake bounce 1 - warm glow where beam hits a surface
-const bounce1 = new THREE.PointLight(0xffc888, 3.0, 9);
+// Fake bounce 1 - warm glow where beam hits a surface (+25%)
+const bounce1 = new THREE.PointLight(0xffc888, 3.75, 11);
 bounce1.position.set(0, 1.0, 0);
 scene.add(bounce1);
 
-// Fake bounce 2 - floor bounce fill (between player and hit)
-const bounce2 = new THREE.PointLight(0xffdba0, 1.5, 7);
+// Fake bounce 2 - floor bounce fill (+25%)
+const bounce2 = new THREE.PointLight(0xffdba0, 1.9, 9);
 bounce2.position.set(0, 0.3, 0);
 scene.add(bounce2);
 
@@ -784,6 +784,37 @@ function mkCrate(x,z){
     crates.push({alive:true,x,z,r:0.5,kind:isWep?'wep':'ammo',wi,mesh,t:0,spawnT:0.3});
 }
 
+// ===== EXPLOSION VISUAL FX =====
+let explFlashes=[];
+const _explLightPool=[];
+function explodeFX(x,z,blast){
+    // Bright orange flash light (scaled to blast radius)
+    let light;
+    if(_explLightPool.length>0){light=_explLightPool.pop();}
+    else{light=new THREE.PointLight(0xff7030,1,1);}
+    const baseI=12+blast*3.5;
+    light.color.setHex(0xff7030);
+    light.intensity=baseI;
+    light.distance=blast*3.2;
+    light.position.set(x,0.8,z);
+    scene.add(light);
+    explFlashes.push({light,life:0.35,maxLife:0.35,baseI});
+    // Fiery particle burst - scales with blast
+    const n=Math.min(22,Math.floor(6+blast*1.8));
+    const colors=[0xffaa20,0xff6020,0xff3010,0xffd040];
+    for(let i=0;i<n;i++){
+        if(particles.length>=MAX_PARTICLES)break;
+        const a=Math.random()*Math.PI*2;
+        const s=(1+Math.random()*2.5)*Math.max(1,blast*0.35);
+        const col=colors[Math.floor(Math.random()*colors.length)];
+        const sz=0.1+Math.random()*0.18;
+        const mesh=getPooledParticleMesh(sz,col);
+        mesh.position.set(x+(Math.random()-0.5)*blast*0.3,0.3+Math.random()*0.6,z+(Math.random()-0.5)*blast*0.3);
+        scene.add(mesh);
+        particles.push({alive:true,mesh,vx:Math.cos(a)*s,vy:1+Math.random()*2.5,vz:Math.sin(a)*s,life:0.35+Math.random()*0.35,ml:0.35+Math.random()*0.35});
+    }
+}
+
 function emitP(x,z,color,n,spd){
     // Cap particles globally
     const canEmit=Math.min(n, MAX_PARTICLES-particles.length);
@@ -834,6 +865,7 @@ function startGame(){
     particles.forEach(p=>{if(p.mesh)scene.remove(p.mesh);});
     crates.forEach(c=>{if(c.mesh)scene.remove(c.mesh);});
     bloodPools.forEach(bp=>{if(bp.mesh)scene.remove(bp.mesh);});
+    explFlashes.forEach(f=>scene.remove(f.light));explFlashes=[];
     enemies=[];bullets=[];particles=[];crates=[];bloodPools=[];
     for(let w=2;w<=WC;w++)ammo[w]=0;
     reloading=false;reloadT=0;
@@ -884,7 +916,7 @@ function mkLaserBeam(x1,z1,x2,z2){
 function playerShoot(){
     const w=WEAP[pl.wep];
     pl.shotT=w.rate*pl.rateM;sfx[w.sfx]();shake=Math.max(shake,w.sz>0.15?0.3:0.1);
-    muzzleLight.intensity=3;setTimeout(()=>muzzleLight.intensity=0,50);
+    muzzleLight.intensity=12;setTimeout(()=>muzzleLight.intensity=0,80);
     const dmg=w.dmg*pl.dmgM;
 
     if(w.laser){
@@ -1148,7 +1180,7 @@ function update(dt){
         if(b.z<-HH){b.z=-HH;b.vz=Math.abs(b.vz);hitW=true;}
         if(b.z>HH){b.z=HH;b.vz=-Math.abs(b.vz);hitW=true;}
         if(hitW){b.bounces++;if(b.bounces>b.ric){
-            if(b.expl||b.fire){sfx.explode();emitP(b.x,b.z,0xd06020,8,4);shake=Math.max(shake,0.3);
+            if(b.expl||b.fire){sfx.explode();explodeFX(b.x,b.z,b.blast);shake=Math.max(shake,0.3);
                 for(const en of enemies){if(!en.alive||en.spawning)continue;const dd=dst(b,en);if(dd<b.blast){en.hp-=b.dmg*(1-dd/b.blast);en.hitT=0.08;if(en.hp<=0)killEn(en);}}}
             b.alive=false;scene.remove(b.mesh);returnBulletToPool(b.mesh);continue;}
             sfx.ricochet();emitP(b.x,b.z,0xe8d040,2,2);
@@ -1156,7 +1188,7 @@ function update(dt){
         // Inner wall ricochet
         if(bulletBounceInnerWall(b)){
             if(b.expl||b.fire){
-                sfx.explode();emitP(b.x,b.z,0xd06020,8,4);shake=Math.max(shake,0.3);
+                sfx.explode();explodeFX(b.x,b.z,b.blast);shake=Math.max(shake,0.3);
                 for(const en of enemies){if(!en.alive||en.spawning)continue;const dd=dst(b,en);if(dd<b.blast){en.hp-=b.dmg*(1-dd/b.blast);en.hitT=0.08;if(en.hp<=0)killEn(en);}}
                 b.alive=false;scene.remove(b.mesh);returnBulletToPool(b.mesh);continue;
             }
@@ -1170,7 +1202,7 @@ function update(dt){
             for(const e of enemies){if(!e.alive||e.spawning)continue;
                 if(dst(b,e)<e.r+b.sz){e.hp-=b.dmg;e.hitT=0.08;spawnDmgNum(e.x,e.z,b.dmg);const ka=Math.atan2(e.z-b.z,e.x-b.x);e.kbx+=Math.cos(ka)*4;e.kbz+=Math.sin(ka)*4;emitP(b.x,b.z,e.col,3,2);sfx.hit();
                 if(e.hp<=0)killEn(e);
-                if(b.expl||b.fire){sfx.explode();emitP(b.x,b.z,0xd06020,8,4);for(const e2 of enemies){if(!e2.alive||e2.spawning||e2===e)continue;const dd=dst(b,e2);if(dd<b.blast){e2.hp-=b.dmg*0.6*(1-dd/b.blast);e2.hitT=0.08;if(e2.hp<=0)killEn(e2);}}}
+                if(b.expl||b.fire){sfx.explode();explodeFX(b.x,b.z,b.blast);shake=Math.max(shake,0.2);for(const e2 of enemies){if(!e2.alive||e2.spawning||e2===e)continue;const dd=dst(b,e2);if(dd<b.blast){e2.hp-=b.dmg*0.6*(1-dd/b.blast);e2.hitT=0.08;if(e2.hp<=0)killEn(e2);}}}
                 b.alive=false;scene.remove(b.mesh);returnBulletToPool(b.mesh);break;}}
             if(b.alive)for(const cr of crates){if(!cr.alive||cr.spawnT>0)continue;
                 if(dst(b,cr)<cr.r+b.sz){
@@ -1268,6 +1300,13 @@ function update(dt){
 
     // Laser beams cleanup
     for(let i=laserBeams.length-1;i>=0;i--){laserBeams[i].life-=dt;if(laserBeams[i].life<=0){scene.remove(laserBeams[i].mesh);laserBeams.splice(i,1);}}
+
+    // Explosion flash lights - fade out
+    for(let i=explFlashes.length-1;i>=0;i--){
+        const f=explFlashes[i];f.life-=dt;
+        if(f.life<=0){scene.remove(f.light);if(_explLightPool.length<10)_explLightPool.push(f.light);explFlashes.splice(i,1);}
+        else f.light.intensity=f.baseI*(f.life/f.maxLife);
+    }
 
     // Particles
     for(const p of particles){if(!p.alive)continue;p.mesh.position.x+=p.vx*dt;p.mesh.position.y+=p.vy*dt;p.mesh.position.z+=p.vz*dt;
