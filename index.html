@@ -73,6 +73,12 @@ canvas{display:block}
 #pause-resume{color:#e8c020!important;border-color:#e8c020!important;font-size:18px!important;margin-top:22px!important;padding:12px 32px!important;animation:pulse 1.5s infinite}
 #hurt-vignette{position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:9;opacity:0;
     background:radial-gradient(ellipse at center,transparent 40%,rgba(180,0,0,0.7) 100%);transition:opacity 0.05s}
+#shield-overlay{position:fixed;inset:0;pointer-events:none;z-index:8;opacity:0;transition:opacity 0.3s;
+    background:radial-gradient(ellipse at center,transparent 50%,rgba(64,180,255,0.45) 100%);
+    box-shadow:inset 0 0 120px rgba(64,180,255,0.35)}
+#rage-overlay{position:fixed;inset:0;pointer-events:none;z-index:8;opacity:0;transition:opacity 0.2s;
+    background:radial-gradient(ellipse at center,rgba(255,40,20,0.1) 30%,rgba(200,20,10,0.55) 100%);
+    mix-blend-mode:screen}
 #crosshair{position:fixed;top:calc(50% - 45px);left:50%;width:18px;height:18px;margin:-9px 0 0 -9px;pointer-events:none;z-index:11;display:none}
 #crosshair::before,#crosshair::after{content:'';position:absolute;background:#e8c020;opacity:0.8}
 #crosshair::before{top:8px;left:0;width:18px;height:2px}
@@ -134,6 +140,8 @@ body.mobile #crosshair{top:calc(50% - 29px)}
         ▸ <span class="red">BOSS</span> derrotado = <span class="hl">CURA TOTAL</span> + upgrade + arma nova<br>
         ▸ Balas <span class="hl">ricocheteiam</span> em paredes, chão e teto<br>
         ▸ Atire nos <span class="hl">crates</span> pra soltar arma ou munição<br>
+        ▸ Pegue <span style="color:#60c0ff">SHIELD azul</span> pra 10s de proteção<br>
+        ▸ Pegue <span class="red">RAGE vermelho</span> pra 5s de dano brutal<br>
         ▸ Sem checkpoint — morreu, recomeça do zero (<span class="red">roguelike</span>)
         </p>
     </div>
@@ -152,6 +160,7 @@ body.mobile #crosshair{top:calc(50% - 29px)}
         ▸ <span class="red">BOSS</span> = <span class="hl">CURA TOTAL</span> + upgrade + arma nova<br>
         ▸ Balas ricocheteiam em paredes, chão e teto<br>
         ▸ Atire nos crates pra soltar arma/munição<br>
+        ▸ <span style="color:#60c0ff">SHIELD</span> azul = 10s proteção · <span class="red">RAGE</span> vermelho = 5s fúria<br>
         ▸ Morreu = recomeça do zero (<span class="red">roguelike</span>)
         </p>
     </div>
@@ -214,6 +223,8 @@ body.mobile #crosshair{top:calc(50% - 29px)}
 <div id="announce"><h1></h1><h2></h2></div>
 <div id="hurt-vignette"></div>
 <div id="hurt-glitch"></div>
+<div id="shield-overlay"></div>
+<div id="rage-overlay"></div>
 <div id="crosshair"></div>
 <div id="joy-base"></div>
 <div id="joy-knob"></div>
@@ -429,7 +440,7 @@ const $start=$('start-screen'),$over=$('game-over'),$hud=$('hud');
 const $hWave=$('h-wave'),$hScore=$('h-score'),$hKills=$('h-kills'),$hHi=$('h-hi'),$hTime=$('h-time');
 const $hCombo=$('h-combo'),$waveInfo=$('wave-info');
 const $ann=$('announce'),$annH1=$ann.querySelector('h1'),$annH2=$ann.querySelector('h2');
-const $pause=$('pause-screen'),$hurtVig=$('hurt-vignette'),$hurtGlitch=$('hurt-glitch');
+const $pause=$('pause-screen'),$hurtVig=$('hurt-vignette'),$hurtGlitch=$('hurt-glitch'),$shieldOv=$('shield-overlay'),$rageOv=$('rage-overlay');
 const $doomHud=$('doom-hud'),$dhAmmo=$('dh-ammo'),$dhHp=$('dh-hp'),$dhHpBar=$('dhud-hp-bar'),$crosshair=$('crosshair');
 const $dhWave=$('dh-wave'),$dhWepName=$('dh-wepname');
 const faceCanvas=$('face-canvas'),faceCtx=faceCanvas.getContext('2d');
@@ -728,9 +739,9 @@ const WEAP={
     1:{name:'PISTOL',rate:0.18,dmg:20,spd:30,spread:0.03,count:1,sz:0.12,color:0xe8c020,sfx:'shoot',maxAmmo:Infinity,ric:3},
     2:{name:'SHOTGUN',rate:0.45,dmg:16,spd:26,spread:0.15,count:8,sz:0.1,color:0xd06020,sfx:'shotgun',maxAmmo:28,rTime:0.9,ric:1},
     3:{name:'CHAINGUN',rate:0.06,dmg:16,spd:34,spread:0.07,count:1,sz:0.1,color:0xe8d040,sfx:'chain',maxAmmo:150,rTime:1.1,ric:2},
-    4:{name:'ROCKET',rate:0.7,dmg:120,spd:20,spread:0.01,count:1,sz:0.2,color:0xe03818,sfx:'rocket',maxAmmo:12,rTime:1.5,ric:0,expl:true,blast:8},
-    5:{name:'PLASMA',rate:0.08,dmg:24,spd:36,spread:0.04,count:1,sz:0.14,color:0x30a0b0,sfx:'plasma',maxAmmo:80,rTime:1.0,ric:4},
-    6:{name:'BOMB',rate:1.0,dmg:240,spd:14,spread:0.02,count:1,sz:0.25,color:0xe8d040,sfx:'bomb',maxAmmo:6,rTime:1.8,ric:0,expl:true,blast:5.5},
+    4:{name:'ROCKET',rate:0.5,dmg:150,spd:30,spread:0.008,count:1,sz:0.22,color:0xe03818,sfx:'rocket',maxAmmo:15,rTime:1.3,ric:0,expl:true,blast:11},
+    5:{name:'PURPLE LASER',rate:0.04,dmg:34,spd:60,spread:0.005,count:1,sz:0.1,color:0xb040ff,sfx:'laser',maxAmmo:300,rTime:1.0,ric:0,laser:true},
+    6:{name:'BOMB LAUNCHER',rate:1.1,dmg:360,spd:22,spread:0.015,count:1,sz:0.32,color:0xffaa00,sfx:'bomb',maxAmmo:6,rTime:1.9,ric:0,expl:true,blast:14},
     7:{name:'MOLOTOV',rate:0.9,dmg:120,spd:16,spread:0.03,count:1,sz:0.2,color:0xd06020,sfx:'molotov',maxAmmo:8,rTime:1.3,ric:0,fire:true,blast:3.5},
     8:{name:'LASER',rate:0.02,dmg:10,spd:60,spread:0.01,count:1,sz:0.08,color:0xff2020,sfx:'laser',maxAmmo:200,rTime:0.8,ric:6,laser:true},
     9:{name:'MEGA BOMB',rate:2.0,dmg:500,spd:10,spread:0.01,count:1,sz:0.4,color:0xff4400,sfx:'megabomb',maxAmmo:3,rTime:2.5,ric:0,expl:true,blast:9},
@@ -778,11 +789,12 @@ let gameTime=0,paused=false,shake=0,nextBoss=0,volume=50;
 let toSpawn=0,spawnT=0,spawnRate=0,crateT=0;
 
 // Player
-const pl={x:0,z:0,r:0.5,angle:0,pitch:0,hp:20,maxHp:20,spd:10,wep:1,shotT:0,dmgM:1,rateM:1,dashCd:0,dashT:0,inv:0,hurtT:0,walkPhase:0};
+const pl={x:0,z:0,r:0.5,angle:0,pitch:0,hp:20,maxHp:20,spd:10,wep:1,shotT:0,shotBufT:0,dmgM:1,rateM:1,dashCd:0,dashT:0,inv:0,hurtT:0,walkPhase:0,shieldT:0,rageT:0};
 const PITCH_MAX=1.35; // ~77° up/down
 
 // Entity arrays
-let enemies=[],bullets=[],particles=[],crates=[];
+let enemies=[],bullets=[],particles=[],crates=[],pickups=[];
+let powerupT=18+Math.random()*10;
 
 // ===== 3D MESH HELPERS =====
 // Shared geometries/materials to avoid GC pressure
@@ -932,19 +944,22 @@ function buildFPWeapon(id){
         _fpPart(0.05,0.07,0.04,0xe8c020,X,Y+0.17,-0.55,0xe8c020);
         _fpPart(0.15,0.15,0.1,0xe03818,X,Y,-0.82,0x601010); // rocket nose
         _fpPart(0.11,0.16,0.14,0x222222,X,Y-0.16,-0.3);
-    }else if(id===5){ // PLASMA GUN - sci-fi blue glow
-        _fpPart(0.13,0.13,0.45,0x1a2030,X,Y,-0.5,0x001a3a);
-        _fpPart(0.1,0.1,0.06,0x40c0e0,X,Y,-0.78,0x40c0e0); // glowing emitter
-        _fpPart(0.05,0.11,0.18,0x208098,X+0.1,Y,-0.5,0x106080); // right cell
-        _fpPart(0.05,0.11,0.18,0x208098,X-0.1,Y,-0.5,0x106080); // left cell
-        _fpPart(0.12,0.03,0.15,0x2a3040,X,Y+0.08,-0.5); // top rail
-        _fpPart(0.03,0.05,0.04,0x80e0ff,X,Y+0.12,-0.55,0x80e0ff); // sight
-        _fpPart(0.11,0.16,0.14,0x1a1a2a,X,Y-0.16,-0.3);
-    }else if(id===6){ // GRENADE LAUNCHER (BOMB) - short fat barrel
-        _fpPart(0.19,0.19,0.3,0x444444,X,Y,-0.4,0x111111);
-        _fpPart(0.14,0.14,0.12,0xe8d040,X,Y,-0.62,0x302008); // visible grenade
-        _fpPart(0.05,0.04,0.1,0x222222,X,Y+0.12,-0.42); // top handle
-        _fpPart(0.11,0.18,0.14,0x2a2a2a,X,Y-0.17,-0.25); // trigger grip
+    }else if(id===5){ // PURPLE LASER - sleek beam rifle, violet glow
+        _fpPart(0.09,0.09,0.58,0x1a0a2a,X,Y,-0.52,0x2a0a4a);
+        _fpPart(0.12,0.12,0.08,0xb040ff,X,Y,-0.84,0xb040ff); // emitter
+        _fpPart(0.08,0.08,0.04,0xe0a0ff,X,Y,-0.9,0xe0a0ff); // inner core
+        _fpPart(0.04,0.11,0.2,0x6020a0,X+0.09,Y,-0.48,0x3a0a6a); // right fin
+        _fpPart(0.04,0.11,0.2,0x6020a0,X-0.09,Y,-0.48,0x3a0a6a); // left fin
+        _fpPart(0.13,0.03,0.22,0x2a1240,X,Y+0.07,-0.5); // top rail
+        _fpPart(0.04,0.05,0.04,0xff60ff,X,Y+0.11,-0.56,0xff60ff); // violet sight
+        _fpPart(0.11,0.17,0.14,0x140820,X,Y-0.16,-0.3); // grip
+    }else if(id===6){ // BOMB LAUNCHER - huge fat barrel + visible shell
+        _fpPart(0.24,0.24,0.38,0x444444,X,Y,-0.42,0x181818);
+        _fpPart(0.17,0.17,0.15,0xffaa00,X,Y,-0.7,0xff6010); // visible bomb shell
+        _fpPart(0.08,0.06,0.06,0xffcc40,X,Y,-0.82,0xffcc40); // glowing tip
+        _fpPart(0.28,0.05,0.4,0x3a3a3a,X,Y+0.14,-0.42); // top rail
+        _fpPart(0.05,0.06,0.1,0xe8c020,X,Y+0.2,-0.5,0xe8c020); // scope
+        _fpPart(0.13,0.19,0.16,0x2a2a2a,X,Y-0.19,-0.25); // trigger grip
     }else if(id===7){ // MOLOTOV - hand-thrown bottle
         _fpPart(0.1,0.14,0.1,0x3a2418,X,Y-0.05,-0.25); // hand
         _fpPart(0.09,0.24,0.09,0xd06020,X,Y+0.12,-0.35,0x502008); // glass bottle
@@ -1040,28 +1055,160 @@ function mkEnemy(type,x,z){
 function mkBoss(idx,x,z){
     const d=BDEF[idx];const s=d.r*1.8;
     const mesh=new THREE.Group();
-    // Big body
-    const body=mkBoxMesh(s,s*0.9,s*0.8,d.col,0x0a0404);body.position.y=s*0.5;mesh.add(body);
-    // Head
-    const head=mkBoxMesh(s*0.5,s*0.45,s*0.45,d.col);head.position.y=s*1.0;mesh.add(head);
-    // Glowing eyes
-    const eL=mkBoxMesh(0.2,0.2,0.1,d.eye,d.eye);eL.position.set(-d.r*0.25,s*1.05,-s*0.24);mesh.add(eL);
-    const eR=mkBoxMesh(0.2,0.2,0.1,d.eye,d.eye);eR.position.set(d.r*0.25,s*1.05,-s*0.24);mesh.add(eR);
-    // Main horns
-    const hL=mkBoxMesh(0.25,0.7,0.2,d.col);hL.position.set(-d.r*0.5,s*1.3,0);mesh.add(hL);
-    const hR=mkBoxMesh(0.25,0.7,0.2,d.col);hR.position.set(d.r*0.5,s*1.3,0);mesh.add(hR);
-    // Extra horn pair (spikes)
-    const sL=mkBoxMesh(0.15,0.4,0.15,d.col);sL.position.set(-d.r*0.3,s*1.2,-s*0.15);mesh.add(sL);
-    const sR=mkBoxMesh(0.15,0.4,0.15,d.col);sR.position.set(d.r*0.3,s*1.2,-s*0.15);mesh.add(sR);
-    // Crown detail
-    const crown=mkBoxMesh(s*0.4,0.15,s*0.35,d.eye,d.eye);crown.position.y=s*1.25;mesh.add(crown);
-    // Body spikes
-    const spk1=mkBoxMesh(0.15,0.5,0.15,d.col);spk1.position.set(0,s*0.9,s*0.35);mesh.add(spk1);
-    const spk2=mkBoxMesh(0.15,0.4,0.15,d.col);spk2.position.set(-s*0.3,s*0.8,s*0.3);mesh.add(spk2);
-    const spk3=mkBoxMesh(0.15,0.4,0.15,d.col);spk3.position.set(s*0.3,s*0.8,s*0.3);mesh.add(spk3);
-    // Legs
-    const legL=mkBoxMesh(s*0.25,s*0.4,s*0.25,d.col);legL.position.set(-s*0.2,s*0.05,0);mesh.add(legL);
-    const legR=mkBoxMesh(s*0.25,s*0.4,s*0.25,d.col);legR.position.set(s*0.2,s*0.05,0);mesh.add(legR);
+    let legL=null,legR=null;
+    const darker=(c)=>{const r=(c>>16)&0xff,g=(c>>8)&0xff,b=c&0xff;return ((r*0.6|0)<<16)|((g*0.6|0)<<8)|(b*0.6|0);};
+    const col2=darker(d.col);
+
+    if(idx===0){ // IMP LORD - massive red hulk with 4 horns
+        const body=mkBoxMesh(s*1.1,s*0.9,s*0.85,d.col,0x200808);body.position.y=s*0.5;mesh.add(body);
+        const head=mkBoxMesh(s*0.55,s*0.5,s*0.5,d.col);head.position.y=s*1.05;mesh.add(head);
+        const eL=mkBoxMesh(0.25,0.25,0.1,d.eye,d.eye);eL.position.set(-s*0.16,s*1.1,-s*0.26);mesh.add(eL);
+        const eR=mkBoxMesh(0.25,0.25,0.1,d.eye,d.eye);eR.position.set(s*0.16,s*1.1,-s*0.26);mesh.add(eR);
+        const mouth=mkBoxMesh(s*0.35,s*0.08,0.1,0x200,0x400);mouth.position.set(0,s*0.92,-s*0.26);mesh.add(mouth);
+        [[-0.6,1.4,0.1],[0.6,1.4,0.1],[-0.35,1.55,-0.05],[0.35,1.55,-0.05]].forEach(p=>{
+            const h=mkBoxMesh(0.22,0.7,0.18,col2);h.position.set(s*p[0],s*p[1],s*p[2]);mesh.add(h);
+        });
+        const shL=mkBoxMesh(s*0.3,s*0.35,s*0.3,col2);shL.position.set(-s*0.55,s*0.85,0);mesh.add(shL);
+        const shR=mkBoxMesh(s*0.3,s*0.35,s*0.3,col2);shR.position.set(s*0.55,s*0.85,0);mesh.add(shR);
+        legL=mkBoxMesh(s*0.28,s*0.45,s*0.28,col2);legL.position.set(-s*0.22,s*0.1,0);mesh.add(legL);
+        legR=mkBoxMesh(s*0.28,s*0.45,s*0.28,col2);legR.position.set(s*0.22,s*0.1,0);mesh.add(legR);
+    }else if(idx===1){ // DEMON CHIEF - 4-legged bull demon, wide stance, pink
+        const body=mkBoxMesh(s*1.4,s*0.7,s*0.95,d.col,0x300015);body.position.y=s*0.5;mesh.add(body);
+        const head=mkBoxMesh(s*0.6,s*0.45,s*0.55,d.col);head.position.set(0,s*0.75,-s*0.55);mesh.add(head);
+        const eL=mkBoxMesh(0.18,0.18,0.08,d.eye,d.eye);eL.position.set(-s*0.18,s*0.85,-s*0.83);mesh.add(eL);
+        const eR=mkBoxMesh(0.18,0.18,0.08,d.eye,d.eye);eR.position.set(s*0.18,s*0.85,-s*0.83);mesh.add(eR);
+        const fangL=mkBoxMesh(0.1,0.2,0.08,0xffffff);fangL.position.set(-s*0.15,s*0.6,-s*0.85);mesh.add(fangL);
+        const fangR=mkBoxMesh(0.1,0.2,0.08,0xffffff);fangR.position.set(s*0.15,s*0.6,-s*0.85);mesh.add(fangR);
+        const hL=mkBoxMesh(0.18,0.5,0.15,col2);hL.position.set(-s*0.35,s*1.0,-s*0.55);hL.rotation.z=0.5;mesh.add(hL);
+        const hR=mkBoxMesh(0.18,0.5,0.15,col2);hR.position.set(s*0.35,s*1.0,-s*0.55);hR.rotation.z=-0.5;mesh.add(hR);
+        // 4 legs
+        [[-0.5,-0.5],[0.5,-0.5],[-0.5,0.4],[0.5,0.4]].forEach((p,i)=>{
+            const leg=mkBoxMesh(s*0.2,s*0.45,s*0.2,col2);leg.position.set(s*p[0],s*0.1,s*p[1]);mesh.add(leg);
+            if(i===0)legL=leg;if(i===1)legR=leg;
+        });
+    }else if(idx===2){ // CYBERDEMON - metallic, single giant eye, cannon arm
+        const body=mkBoxMesh(s*0.9,s*1.1,s*0.7,0x4a4a4a,0x101018);body.position.y=s*0.6;mesh.add(body);
+        const head=mkBoxMesh(s*0.5,s*0.5,s*0.5,0x5a5a5a);head.position.y=s*1.35;mesh.add(head);
+        const bigEye=mkBoxMesh(0.5,0.3,0.12,d.eye,d.eye);bigEye.position.set(0,s*1.38,-s*0.26);mesh.add(bigEye);
+        const cannon=mkBoxMesh(s*0.3,s*0.3,s*0.8,0x222222,0x100810);cannon.position.set(s*0.5,s*0.8,-s*0.2);mesh.add(cannon);
+        const cTip=mkBoxMesh(s*0.2,s*0.2,0.1,d.eye,d.eye);cTip.position.set(s*0.5,s*0.8,-s*0.62);mesh.add(cTip);
+        const armL=mkBoxMesh(s*0.2,s*0.6,s*0.2,0x4a4a4a);armL.position.set(-s*0.5,s*0.85,0);mesh.add(armL);
+        // horn antennae
+        const aL=mkBoxMesh(0.08,0.5,0.08,0x2a2a2a);aL.position.set(-s*0.18,s*1.65,0);mesh.add(aL);
+        const aR=mkBoxMesh(0.08,0.5,0.08,0x2a2a2a);aR.position.set(s*0.18,s*1.65,0);mesh.add(aR);
+        legL=mkBoxMesh(s*0.28,s*0.55,s*0.28,0x3a3a3a);legL.position.set(-s*0.2,s*0.15,0);mesh.add(legL);
+        legR=mkBoxMesh(s*0.28,s*0.55,s*0.28,0x3a3a3a);legR.position.set(s*0.2,s*0.15,0);mesh.add(legR);
+    }else if(idx===3){ // CACO KING - floating giant orb, single green eye, spikes
+        const orb=mkBoxMesh(s*1.3,s*1.2,s*1.3,d.col,0x300808);orb.position.y=s*1.0;mesh.add(orb);
+        const eye=mkBoxMesh(0.6,0.6,0.15,d.eye,d.eye);eye.position.set(0,s*1.05,-s*0.65);mesh.add(eye);
+        const mouth=mkBoxMesh(s*0.6,s*0.2,0.1,0x100,0x300);mouth.position.set(0,s*0.75,-s*0.65);mesh.add(mouth);
+        // spikes around
+        [[0,1.6,0],[-0.7,1.3,0.3],[0.7,1.3,0.3],[0,1.0,0.7],[-0.5,1.55,-0.2],[0.5,1.55,-0.2]].forEach(p=>{
+            const sp=mkBoxMesh(0.16,0.45,0.16,col2);sp.position.set(s*p[0],s*p[1],s*p[2]);mesh.add(sp);
+        });
+    }else if(idx===4){ // BARON LORD - armored knight with wings
+        const body=mkBoxMesh(s*0.9,s*1.0,s*0.5,d.col,0x081408);body.position.y=s*0.65;mesh.add(body);
+        const chest=mkBoxMesh(s*0.95,s*0.3,s*0.55,col2);chest.position.y=s*0.95;mesh.add(chest);
+        const head=mkBoxMesh(s*0.4,s*0.4,s*0.4,d.col);head.position.y=s*1.35;mesh.add(head);
+        const eL=mkBoxMesh(0.1,0.15,0.08,d.eye,d.eye);eL.position.set(-s*0.1,s*1.4,-s*0.22);mesh.add(eL);
+        const eR=mkBoxMesh(0.1,0.15,0.08,d.eye,d.eye);eR.position.set(s*0.1,s*1.4,-s*0.22);mesh.add(eR);
+        // wings
+        const wL=mkBoxMesh(s*0.8,s*1.0,0.1,col2);wL.position.set(-s*0.65,s*0.9,s*0.15);wL.rotation.z=0.3;mesh.add(wL);
+        const wR=mkBoxMesh(s*0.8,s*1.0,0.1,col2);wR.position.set(s*0.65,s*0.9,s*0.15);wR.rotation.z=-0.3;mesh.add(wR);
+        // curved goat horns
+        const hL=mkBoxMesh(0.12,0.45,0.12,0x2a3a12);hL.position.set(-s*0.17,s*1.6,-s*0.05);mesh.add(hL);
+        const hR=mkBoxMesh(0.12,0.45,0.12,0x2a3a12);hR.position.set(s*0.17,s*1.6,-s*0.05);mesh.add(hR);
+        legL=mkBoxMesh(s*0.22,s*0.5,s*0.22,col2);legL.position.set(-s*0.17,s*0.2,0);mesh.add(legL);
+        legR=mkBoxMesh(s*0.22,s*0.5,s*0.22,col2);legR.position.set(s*0.17,s*0.2,0);mesh.add(legR);
+    }else if(idx===5){ // SPIDER MIND - low squat dome with brain on top, small legs
+        const base=mkBoxMesh(s*1.4,s*0.5,s*1.2,0x555544,0x080800);base.position.y=s*0.25;mesh.add(base);
+        const brain=mkBoxMesh(s*0.7,s*0.4,s*0.7,0xff8888,0x300010);brain.position.y=s*0.7;mesh.add(brain);
+        const eL=mkBoxMesh(0.2,0.2,0.1,d.eye,d.eye);eL.position.set(-s*0.2,s*0.35,-s*0.6);mesh.add(eL);
+        const eR=mkBoxMesh(0.2,0.2,0.1,d.eye,d.eye);eR.position.set(s*0.2,s*0.35,-s*0.6);mesh.add(eR);
+        // 6 legs
+        [[-0.7,-0.4],[0.7,-0.4],[-0.7,0],[0.7,0],[-0.7,0.4],[0.7,0.4]].forEach((p,i)=>{
+            const leg=mkBoxMesh(s*0.1,s*0.4,s*0.1,0x3a3a2a);leg.position.set(s*p[0],s*0.18,s*p[1]);mesh.add(leg);
+            if(i===0)legL=leg;if(i===1)legR=leg;
+        });
+    }else if(idx===6){ // THE DIVIDER - tall thin cloaked figure
+        const cloak=mkBoxMesh(s*0.9,s*1.4,s*0.6,d.col,0x082008);cloak.position.y=s*0.7;mesh.add(cloak);
+        const head=mkBoxMesh(s*0.35,s*0.4,s*0.35,0x1a2a08);head.position.y=s*1.55;mesh.add(head);
+        // glowing inner eyes
+        const eL=mkBoxMesh(0.1,0.1,0.05,d.eye,d.eye);eL.position.set(-s*0.08,s*1.55,-s*0.18);mesh.add(eL);
+        const eR=mkBoxMesh(0.1,0.1,0.05,d.eye,d.eye);eR.position.set(s*0.08,s*1.55,-s*0.18);mesh.add(eR);
+        const hood=mkBoxMesh(s*0.55,s*0.3,s*0.5,col2);hood.position.y=s*1.75;mesh.add(hood);
+        // scythe shape
+        const staff=mkBoxMesh(0.08,s*1.5,0.08,0x2a1a0a);staff.position.set(s*0.6,s*0.75,0);mesh.add(staff);
+        const blade=mkBoxMesh(s*0.45,0.08,0.08,0xaaaaaa,0x444444);blade.position.set(s*0.8,s*1.45,0);mesh.add(blade);
+        legL=mkBoxMesh(s*0.15,s*0.3,s*0.15,col2);legL.position.set(-s*0.12,s*0.1,0);mesh.add(legL);
+        legR=mkBoxMesh(s*0.15,s*0.3,s*0.15,col2);legR.position.set(s*0.12,s*0.1,0);mesh.add(legR);
+    }else if(idx===7){ // ARCH-VILE - skeletal, yellow fire aura
+        const body=mkBoxMesh(s*0.5,s*1.1,s*0.35,0xd8c080,0x2a1000);body.position.y=s*0.6;mesh.add(body);
+        const ribs1=mkBoxMesh(s*0.6,0.06,s*0.4,0xb0a070);ribs1.position.y=s*0.85;mesh.add(ribs1);
+        const ribs2=mkBoxMesh(s*0.55,0.06,s*0.38,0xb0a070);ribs2.position.y=s*0.7;mesh.add(ribs2);
+        const head=mkBoxMesh(s*0.35,s*0.4,s*0.35,0xe0d090);head.position.y=s*1.35;mesh.add(head);
+        const eL=mkBoxMesh(0.12,0.15,0.05,d.eye,d.eye);eL.position.set(-s*0.09,s*1.42,-s*0.19);mesh.add(eL);
+        const eR=mkBoxMesh(0.12,0.15,0.05,d.eye,d.eye);eR.position.set(s*0.09,s*1.42,-s*0.19);mesh.add(eR);
+        const jaw=mkBoxMesh(s*0.3,0.1,s*0.25,0xc0a070);jaw.position.set(0,s*1.22,-s*0.08);mesh.add(jaw);
+        // fire aura bits
+        const f1=mkBoxMesh(0.15,0.3,0.15,0xffff40,0xffff40);f1.position.set(-s*0.35,s*1.1,0);mesh.add(f1);
+        const f2=mkBoxMesh(0.15,0.3,0.15,0xffff40,0xffff40);f2.position.set(s*0.35,s*1.1,0);mesh.add(f2);
+        const armL=mkBoxMesh(s*0.12,s*0.6,s*0.12,0xd8c080);armL.position.set(-s*0.35,s*0.7,0);mesh.add(armL);
+        const armR=mkBoxMesh(s*0.12,s*0.6,s*0.12,0xd8c080);armR.position.set(s*0.35,s*0.7,0);mesh.add(armR);
+        legL=mkBoxMesh(s*0.15,s*0.5,s*0.15,0xc0a070);legL.position.set(-s*0.12,s*0.15,0);mesh.add(legL);
+        legR=mkBoxMesh(s*0.15,s*0.5,s*0.15,0xc0a070);legR.position.set(s*0.12,s*0.15,0);mesh.add(legR);
+    }else if(idx===8){ // PAIN ELEMENTAL - floating with multiple faces
+        const orb=mkBoxMesh(s*1.1,s*1.1,s*1.1,d.col,0x201408);orb.position.y=s*1.0;mesh.add(orb);
+        // front face
+        const eL=mkBoxMesh(0.18,0.18,0.08,d.eye,d.eye);eL.position.set(-s*0.18,s*1.1,-s*0.56);mesh.add(eL);
+        const eR=mkBoxMesh(0.18,0.18,0.08,d.eye,d.eye);eR.position.set(s*0.18,s*1.1,-s*0.56);mesh.add(eR);
+        const m=mkBoxMesh(s*0.4,s*0.15,0.08,0x200,0x400);m.position.set(0,s*0.85,-s*0.56);mesh.add(m);
+        // side faces
+        [-1,1].forEach(sg=>{
+            const e1=mkBoxMesh(0.08,0.12,0.15,d.eye,d.eye);e1.position.set(sg*s*0.56,s*1.1,-s*0.15);mesh.add(e1);
+            const e2=mkBoxMesh(0.08,0.12,0.15,d.eye,d.eye);e2.position.set(sg*s*0.56,s*1.1,s*0.15);mesh.add(e2);
+        });
+        // back face
+        const beL=mkBoxMesh(0.15,0.15,0.08,d.eye,d.eye);beL.position.set(-s*0.15,s*1.1,s*0.56);mesh.add(beL);
+        const beR=mkBoxMesh(0.15,0.15,0.08,d.eye,d.eye);beR.position.set(s*0.15,s*1.1,s*0.56);mesh.add(beR);
+        const spike=mkBoxMesh(0.18,0.5,0.18,col2);spike.position.set(0,s*1.65,0);mesh.add(spike);
+    }else if(idx===9){ // ICON OF SIN - enormous with giant fang mouth
+        const body=mkBoxMesh(s*1.3,s*1.3,s*1.0,d.col,0x100404);body.position.y=s*0.65;mesh.add(body);
+        const head=mkBoxMesh(s*1.0,s*0.7,s*0.8,d.col);head.position.y=s*1.5;mesh.add(head);
+        const mouth=mkBoxMesh(s*0.9,s*0.35,0.15,0x300,0x100);mouth.position.set(0,s*1.3,-s*0.41);mesh.add(mouth);
+        // teeth
+        for(let i=0;i<5;i++){
+            const tt=mkBoxMesh(0.14,0.3,0.08,0xffffff);
+            tt.position.set(-s*0.36+i*s*0.18,s*1.3,-s*0.41);mesh.add(tt);
+        }
+        const eL=mkBoxMesh(0.3,0.3,0.12,d.eye,d.eye);eL.position.set(-s*0.3,s*1.7,-s*0.41);mesh.add(eL);
+        const eR=mkBoxMesh(0.3,0.3,0.12,d.eye,d.eye);eR.position.set(s*0.3,s*1.7,-s*0.41);mesh.add(eR);
+        // giant horns
+        const hL=mkBoxMesh(0.3,0.9,0.25,col2);hL.position.set(-s*0.55,s*2.0,0);hL.rotation.z=0.3;mesh.add(hL);
+        const hR=mkBoxMesh(0.3,0.9,0.25,col2);hR.position.set(s*0.55,s*2.0,0);hR.rotation.z=-0.3;mesh.add(hR);
+        legL=mkBoxMesh(s*0.35,s*0.45,s*0.35,col2);legL.position.set(-s*0.3,s*0.2,0);mesh.add(legL);
+        legR=mkBoxMesh(s*0.35,s*0.45,s*0.35,col2);legR.position.set(s*0.3,s*0.2,0);mesh.add(legR);
+    }else{ // DARK LORD (idx 10+) - armored king with crown
+        const body=mkBoxMesh(s*1.1,s*1.1,s*0.7,d.col,0x080000);body.position.y=s*0.6;mesh.add(body);
+        const chest=mkBoxMesh(s*1.2,s*0.3,s*0.8,col2);chest.position.y=s*1.0;mesh.add(chest);
+        const head=mkBoxMesh(s*0.45,s*0.5,s*0.45,0x200000);head.position.y=s*1.4;mesh.add(head);
+        const eL=mkBoxMesh(0.15,0.2,0.08,d.eye,d.eye);eL.position.set(-s*0.12,s*1.45,-s*0.22);mesh.add(eL);
+        const eR=mkBoxMesh(0.15,0.2,0.08,d.eye,d.eye);eR.position.set(s*0.12,s*1.45,-s*0.22);mesh.add(eR);
+        // crown
+        const crown=mkBoxMesh(s*0.55,s*0.15,s*0.5,d.eye,d.eye);crown.position.y=s*1.72;mesh.add(crown);
+        for(let i=0;i<5;i++){
+            const p=mkBoxMesh(0.1,0.35,0.1,d.eye,d.eye);p.position.set(-s*0.22+i*s*0.11,s*1.9,0);mesh.add(p);
+        }
+        // shoulder armor
+        const shL=mkBoxMesh(s*0.4,s*0.3,s*0.4,col2);shL.position.set(-s*0.62,s*1.0,0);mesh.add(shL);
+        const shR=mkBoxMesh(s*0.4,s*0.3,s*0.4,col2);shR.position.set(s*0.62,s*1.0,0);mesh.add(shR);
+        // sword
+        const sword=mkBoxMesh(0.1,s*1.3,0.1,0xcccccc,0x333333);sword.position.set(s*0.9,s*0.9,0);mesh.add(sword);
+        const hilt=mkBoxMesh(0.25,0.1,0.25,0xe8c020);hilt.position.set(s*0.9,s*0.3,0);mesh.add(hilt);
+        legL=mkBoxMesh(s*0.25,s*0.5,s*0.25,col2);legL.position.set(-s*0.2,s*0.2,0);mesh.add(legL);
+        legR=mkBoxMesh(s*0.25,s*0.5,s*0.25,col2);legR.position.set(s*0.2,s*0.2,0);mesh.add(legR);
+    }
+
     mesh.position.set(x,0,z);mesh.scale.set(0.01,0.01,0.01);
     mesh.traverse(c=>{if(c.isMesh)c.castShadow=false;});
     scene.add(mesh);
@@ -1082,6 +1229,24 @@ function mkBullet(x,z,a,spd,dmg,sz,color,enemy,ric=0,y=1.15,pit=0){
         dmg,sz,color,enemy,life:3,mesh,ric,bounces:0,expl:false,fire:false,blast:0};
 }
 
+function mkPickup(x,z,kind){
+    // kind: 'shield' (blue, 10s invuln) | 'rage' (red, 5s damage buff + invuln)
+    const g=new THREE.Group();
+    if(kind==='shield'){
+        const base=mkBoxMesh(0.55,0.55,0.55,0x1060ff,0x0040a0);base.castShadow=false;g.add(base);
+        const glow=mkBoxMesh(0.75,0.1,0.75,0x60c0ff,0x60c0ff);glow.castShadow=false;glow.position.y=0.4;g.add(glow);
+        const top=mkBoxMesh(0.3,0.3,0.3,0x80e0ff,0x80e0ff);top.castShadow=false;top.position.y=0.55;g.add(top);
+    }else{ // rage
+        const base=mkBoxMesh(0.55,0.55,0.55,0xcc1818,0x800000);base.castShadow=false;g.add(base);
+        const f1=mkBoxMesh(0.3,0.5,0.3,0xff4010,0xff4010);f1.castShadow=false;f1.position.y=0.6;g.add(f1);
+        const f2=mkBoxMesh(0.22,0.35,0.22,0xffaa20,0xffaa20);f2.castShadow=false;f2.position.y=0.85;g.add(f2);
+        const f3=mkBoxMesh(0.12,0.22,0.12,0xffff80,0xffff80);f3.castShadow=false;f3.position.y=1.05;g.add(f3);
+    }
+    g.position.set(x,0.4,z);g.scale.set(0.01,0.01,0.01);
+    scene.add(g);
+    pickups.push({alive:true,x,z,r:0.7,kind,mesh:g,t:Math.random()*6.28,spawnT:0.3});
+}
+
 function mkCrate(x,z){
     const unlKeys=Object.keys(unlockedWeapons).map(Number).filter(k=>k>1);
     const isWep=unlKeys.length>0&&Math.random()<0.4;
@@ -1095,19 +1260,41 @@ function mkCrate(x,z){
 // ===== EXPLOSION VISUAL FX (simplified - no lights, just particles) =====
 let explFlashes=[];
 const _explLightPool=[];
+const _explSpherePool=[];
 function explodeFX(x,z,blast){
-    const n=Math.min(18,Math.floor(5+blast*1.5));
+    // Big orange fireball that expands and fades (main visual impact)
+    let sphere;
+    if(_explSpherePool.length>0){sphere=_explSpherePool.pop();sphere.visible=true;sphere.material.opacity=0.9;}
+    else{
+        const geo=new THREE.SphereGeometry(1,12,8);
+        const mat=new THREE.MeshBasicMaterial({color:0xff8020,transparent:true,opacity:0.9});
+        sphere=new THREE.Mesh(geo,mat);
+    }
+    sphere.position.set(x,blast*0.35,z);
+    sphere.scale.setScalar(blast*0.35);
+    scene.add(sphere);
+    particles.push({alive:true,mesh:sphere,vx:0,vy:0,vz:0,life:0.45,ml:0.45,isExplFlash:true,startScale:blast*0.35,growTo:blast*1.4,noPool:true});
+    // Inner bright white flash
+    const igeo=new THREE.SphereGeometry(1,8,6);
+    const imat=new THREE.MeshBasicMaterial({color:0xffffe0,transparent:true,opacity:1});
+    const inner=new THREE.Mesh(igeo,imat);
+    inner.position.set(x,blast*0.35,z);
+    inner.scale.setScalar(blast*0.2);
+    scene.add(inner);
+    particles.push({alive:true,mesh:inner,vx:0,vy:0,vz:0,life:0.18,ml:0.18,isExplFlash:true,startScale:blast*0.2,growTo:blast*0.6,noPool:true,dispose:true});
+    // Debris particles
+    const n=Math.min(22,Math.floor(6+blast*1.5));
     const colors=[0xffaa20,0xff6020,0xff3010,0xffd040];
     for(let i=0;i<n;i++){
         if(particles.length>=MAX_PARTICLES)break;
         const a=Math.random()*Math.PI*2;
-        const s=(1+Math.random()*2.5)*Math.max(1,blast*0.35);
+        const s=(1+Math.random()*2.5)*Math.max(1,blast*0.4);
         const col=colors[Math.floor(Math.random()*colors.length)];
         const sz=0.1+Math.random()*0.18;
         const mesh=getPooledParticleMesh(sz,col);
         mesh.position.set(x+(Math.random()-0.5)*blast*0.3,0.3+Math.random()*0.6,z+(Math.random()-0.5)*blast*0.3);
         scene.add(mesh);
-        particles.push({alive:true,mesh,vx:Math.cos(a)*s,vy:1+Math.random()*2.5,vz:Math.sin(a)*s,life:0.35+Math.random()*0.35,ml:0.35+Math.random()*0.35});
+        particles.push({alive:true,mesh,vx:Math.cos(a)*s,vy:1+Math.random()*2.5,vz:Math.sin(a)*s,life:0.4+Math.random()*0.4,ml:0.4+Math.random()*0.4});
     }
 }
 
@@ -1163,9 +1350,11 @@ function startGame(){
     bullets.forEach(b=>{if(b.mesh)scene.remove(b.mesh);if(b.light)releaseBulletLight(b.light);});
     particles.forEach(p=>{if(p.mesh)scene.remove(p.mesh);});
     crates.forEach(c=>{if(c.mesh)scene.remove(c.mesh);});
+    pickups.forEach(p=>{if(p.mesh)scene.remove(p.mesh);});
     bloodPools.forEach(bp=>{if(bp.mesh)scene.remove(bp.mesh);});
     explFlashes.forEach(f=>scene.remove(f.light));explFlashes=[];
-    enemies=[];bullets=[];particles=[];crates=[];bloodPools=[];
+    enemies=[];bullets=[];particles=[];crates=[];pickups=[];bloodPools=[];
+    pl.shieldT=0;pl.rageT=0;pl.shotBufT=0;powerupT=16+Math.random()*10;
     for(let w=2;w<=WC;w++)ammo[w]=0;
     reloading=false;reloadT=0;
     genMaze3D();
@@ -1221,7 +1410,7 @@ function playerShoot(){
     const w=WEAP[pl.wep];
     pl.shotT=w.rate*pl.rateM;sfx[w.sfx]();shake=Math.max(shake,w.sz>0.15?0.3:0.1);
     triggerMuzzleFlash(w.color);
-    const dmg=w.dmg*pl.dmgM;
+    const dmg=w.dmg*pl.dmgM*(pl.rageT>0?2.5:1);
 
     if(w.laser){
         // Continuous laser beam - raycast from gun tip, follows pitch (horizontal hit test only)
@@ -1510,13 +1699,23 @@ function update(dt){
     if(reloading){reloadT-=dt;if(reloadT<=0){reloading=false;ammo[pl.wep]=WEAP[pl.wep].maxAmmo;sfx.pickup();}}
 
     pl.shotT-=dt;
-    if(mDown&&pl.shotT<=0&&!reloading){
+    // Shot buffer: if user clicked within 200ms, count it as fire-ready even if button released
+    if(clicked)pl.shotBufT=0.2;
+    if(pl.shotBufT>0)pl.shotBufT-=dt;
+    const wantFire=mDown||pl.shotBufT>0;
+    if(wantFire&&pl.shotT<=0&&!reloading){
+        pl.shotBufT=0;
         const w=WEAP[pl.wep];
         if(w.maxAmmo!==Infinity){if(ammo[pl.wep]<=0){reloading=true;reloadT=w.rTime;}else{ammo[pl.wep]--;playerShoot();}}
         else playerShoot();
     }
 
     pl.inv=Math.max(0,pl.inv-dt);
+    // Powerups tick + keep inv active while shield/rage engaged
+    if(pl.shieldT>0){pl.shieldT=Math.max(0,pl.shieldT-dt);pl.inv=Math.max(pl.inv,0.1);}
+    if(pl.rageT>0){pl.rageT=Math.max(0,pl.rageT-dt);pl.inv=Math.max(pl.inv,0.1);}
+    $shieldOv.style.opacity=pl.shieldT>0?Math.min(0.45,pl.shieldT*0.1+0.2):0;
+    $rageOv.style.opacity=pl.rageT>0?Math.min(0.55,pl.rageT*0.12+0.25):0;
     const wasHurt=pl.hurtT>0;pl.hurtT=Math.max(0,pl.hurtT-dt);
     $hurtVig.style.opacity=pl.hurtT>0?Math.min(1,pl.hurtT*10):0;
     if(wasHurt&&pl.hurtT>0.05)triggerDamageGlitch();
@@ -1692,6 +1891,22 @@ function update(dt){
         const t=Math.max(0,1-(cr.spawnT/0.3));cr.mesh.scale.set(t,t,t);
         cr.mesh.position.set(cr.x,0.4+Math.sin(cr.t)*0.1,cr.z);cr.mesh.rotation.y+=dt;}
 
+    // Pickups (shield / rage) - walk over to collect
+    for(const pk of pickups){
+        if(!pk.alive)continue;
+        pk.spawnT=Math.max(0,pk.spawnT-dt);pk.t+=dt*2;
+        const t=pk.spawnT>0?1-(pk.spawnT/0.3):1;
+        pk.mesh.scale.set(t,t,t);
+        pk.mesh.position.y=0.4+Math.sin(pk.t)*0.15;
+        pk.mesh.rotation.y+=dt*1.4;
+        if(pk.spawnT<=0&&Math.hypot(pl.x-pk.x,pl.z-pk.z)<pl.r+pk.r){
+            if(pk.kind==='shield'){pl.shieldT=10;announce('SHIELD','+10s de proteção',1500);}
+            else{pl.rageT=5;announce('RAGE MODE','+5s de destruição',1500);}
+            sfx.pickup();emitP(pk.x,pk.z,pk.kind==='shield'?0x40c0ff:0xff4020,12,4);
+            pk.alive=false;scene.remove(pk.mesh);
+        }
+    }
+
     // Laser beams cleanup
     for(let i=laserBeams.length-1;i>=0;i--){laserBeams[i].life-=dt;if(laserBeams[i].life<=0){scene.remove(laserBeams[i].mesh);laserBeams.splice(i,1);}}
 
@@ -1705,16 +1920,29 @@ function update(dt){
     // Particles
     for(const p of particles){if(!p.alive)continue;p.mesh.position.x+=p.vx*dt;p.mesh.position.y+=p.vy*dt;p.mesh.position.z+=p.vz*dt;
         if(p.isDmgNum){p.vy*=0.97;if(p.mesh.material)p.mesh.material.opacity=p.life/p.ml;}
-        else{p.vy-=8*dt;}
-        p.life-=dt;if(p.life<=0||(p.mesh.position.y<0&&!p.isDmgNum)){p.alive=false;scene.remove(p.mesh);
+        else if(p.isExplFlash){
+            const t=1-p.life/p.ml;
+            p.mesh.scale.setScalar(p.startScale+(p.growTo-p.startScale)*t);
+            if(p.mesh.material)p.mesh.material.opacity=Math.max(0,1-t);
+        }else{p.vy-=8*dt;}
+        p.life-=dt;
+        if(p.life<=0||(p.mesh.position.y<0&&!p.isDmgNum&&!p.isExplFlash)){
+            p.alive=false;scene.remove(p.mesh);
             if(p.isDmgNum){p.mesh.visible=false;if(_dmgSpritePool.length<30)_dmgSpritePool.push(p.mesh);}
-            else if(!p.noPool){returnParticleToPool(p.mesh);}}}
+            else if(p.isExplFlash){
+                if(p.dispose){if(p.mesh.geometry)p.mesh.geometry.dispose();if(p.mesh.material)p.mesh.material.dispose();}
+                else if(_explSpherePool.length<8)_explSpherePool.push(p.mesh);
+            }
+            else if(!p.noPool){returnParticleToPool(p.mesh);}
+        }
+    }
 
     // Cleanup - in-place removal to avoid GC
     for(let i=enemies.length-1;i>=0;i--)if(!enemies[i].alive)enemies.splice(i,1);
     for(let i=bullets.length-1;i>=0;i--)if(!bullets[i].alive)bullets.splice(i,1);
     for(let i=particles.length-1;i>=0;i--)if(!particles[i].alive)particles.splice(i,1);
     for(let i=crates.length-1;i>=0;i--)if(!crates[i].alive)crates.splice(i,1);
+    for(let i=pickups.length-1;i>=0;i--)if(!pickups[i].alive)pickups.splice(i,1);
 
     // Wave state machine
     phaseT-=dt;
@@ -1732,6 +1960,15 @@ function update(dt){
         if(toSpawn<=0)phase='fight';
     }else if(phase==='fight'){
         crateT-=dt;if(crateT<=0){mkCrate(-HW+3+Math.random()*(HW*2-6),-HH+3+Math.random()*(HH*2-6));crateT=4+Math.random()*3;}
+        powerupT-=dt;
+        if(powerupT<=0){
+            const kind=Math.random()<0.55?'shield':'rage';
+            let px,pz,tries=0;
+            do{px=-HW+3+Math.random()*(HW*2-6);pz=-HH+3+Math.random()*(HH*2-6);tries++;}
+            while(Math.hypot(px-pl.x,pz-pl.z)<5&&tries<20);
+            mkPickup(px,pz,kind);
+            powerupT=16+Math.random()*12;
+        }
         if(enemies.length===0){phase='bosswait';phaseT=1.0;announce('BOSS INCOMING',BDEF[Math.min(nextBoss,BDEF.length-1)].name,1000);setMusMode('boss');}
     }else if(phase==='bosswait'&&phaseT<=0){
         const bi=Math.min(nextBoss,BDEF.length-1);enemies.push(mkBoss(bi,0,0));nextBoss++;sfx.boss();phase='boss';
@@ -1767,7 +2004,7 @@ function updateHUD(){
     else if(reloading)$dhAmmo.textContent='RLD';
     else $dhAmmo.textContent=ammo[pl.wep];
     // Weapons
-    const wN={1:'PIS',2:'SG',3:'CG',4:'RL',5:'PL',6:'BM',7:'ML',8:'LAS',9:'MB'};
+    const wN={1:'PIS',2:'SG',3:'CG',4:'RKT',5:'P-LAS',6:'BML',7:'MLT',8:'LAS',9:'MB'};
     for(let i=1;i<=WC;i++){
         $w[i].textContent=i;
         if(!unlockedWeapons[i]){$w[i].className='dwep locked';}
