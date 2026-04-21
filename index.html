@@ -83,7 +83,7 @@ body.mobile.playing .mbtn{display:flex}
 #btn-reload{bottom:110px;right:124px;width:62px;height:62px;font-size:22px}
 #btn-wep-next{top:60px;right:20px;width:54px;height:54px;font-size:22px}
 #btn-wep-prev{top:60px;right:86px;width:54px;height:54px;font-size:22px}
-#btn-pause{bottom:14px;left:14px;width:44px;height:44px;font-size:18px;border-radius:8px;z-index:40}
+#btn-pause{top:10px;left:50%;transform:translateX(-50%);width:40px;height:32px;font-size:14px;border-radius:6px;z-index:40;background:rgba(20,14,14,0.75);border-color:rgba(232,192,32,0.4)}
 #joy-base,#joy-knob{position:fixed;border-radius:50%;pointer-events:none;z-index:12;display:none}
 #joy-base{width:120px;height:120px;background:rgba(255,255,255,0.06);border:2px solid rgba(232,192,32,0.35)}
 #joy-knob{width:60px;height:60px;background:rgba(232,192,32,0.35);border:2px solid rgba(232,192,32,0.7)}
@@ -91,16 +91,24 @@ body.mobile #joy-base.on,body.mobile #joy-knob.on{display:block}
 #portrait-warn{display:none;position:fixed;inset:0;background:#000;z-index:40;align-items:center;justify-content:center;flex-direction:column;color:#e8c020;font-size:20px;text-align:center;padding:20px;font-family:'Courier New',monospace}
 #portrait-warn .rot{font-size:50px;margin-bottom:20px;animation:rotHint 1.8s infinite}
 @keyframes rotHint{0%,100%{transform:rotate(0)}50%{transform:rotate(90deg)}}
-body.mobile #doom-hud{height:62px}
-body.mobile .dhud-value{font-size:20px}
-body.mobile .dhud-label{font-size:9px}
-body.mobile .dhud-section{padding:3px 10px}
-body.mobile #doom-face{width:52px;height:52px;margin:0 6px}
-body.mobile #dhud-hp-wrap{width:90px}
-body.mobile #dhud-weapons{gap:2px}
-body.mobile .dwep{padding:2px 4px;font-size:11px}
-body.mobile #hud-top div{font-size:12px}
-body.mobile #crosshair{top:calc(50% - 31px)}
+body.mobile #doom-hud{height:58px;background:rgba(20,14,14,0.92);border-top:2px solid rgba(224,56,24,0.35)}
+body.mobile .dhud-value{font-size:18px}
+body.mobile .dhud-label{font-size:8px;letter-spacing:1px;opacity:0.7}
+body.mobile .dhud-section{padding:3px 8px;border-right:1px solid rgba(80,60,60,0.4)}
+body.mobile #doom-face{width:48px;height:48px;margin:0 4px;border-width:2px}
+body.mobile #dhud-hp-wrap{width:100px}
+body.mobile #dhud-hp-bg{height:10px;border-width:1px}
+body.mobile #dhud-weapons{display:none}
+body.mobile #dh-wepname{font-size:14px!important;color:#e8c020!important;font-weight:bold;letter-spacing:1px}
+body.mobile #dh-ammo{font-size:26px!important;font-weight:bold;color:#e8c020}
+body.mobile #dhud-ammo{min-width:72px}
+body.mobile #dh-hp{font-size:15px}
+body.mobile #dh-wave{font-size:22px}
+body.mobile #hud-top{padding:5px 14px;background:rgba(0,0,0,0.4)}
+body.mobile #hud-top div{font-size:11px;letter-spacing:0.5px}
+body.mobile #h-combo{color:#e8c020;font-weight:bold;font-size:13px!important}
+body.mobile #wave-info{top:38px;right:14px;font-size:14px}
+body.mobile #crosshair{top:calc(50% - 29px)}
 @media (orientation:portrait) and (max-width:900px){body.mobile #portrait-warn{display:flex}}
 </style>
 </head>
@@ -1134,7 +1142,9 @@ function startGame(){
     state='play';phase='idle';phaseT=0.5;
     waveNum=0;score=0;kills=0;combo=0;comboT=0;comboX=1;shake=0;nextBoss=0;gameTime=0;paused=false;
     $pause.style.display='none';
-    pl.x=0;pl.z=0;pl.hp=20;pl.maxHp=20;pl.spd=12;pl.wep=1;pl.shotT=0;pl.angle=-Math.PI/2;pl.pitch=0;
+    pl.x=0;pl.z=0;pl.hp=20;pl.maxHp=20;pl.spd=12;pl.wep=1;pl.shotT=0.4;pl.angle=-Math.PI/2;pl.pitch=0;
+    // Ignore the click/tap that started the game so player doesn't fire immediately
+    mDown=false;clicked=false;
     pl.dmgM=1;pl.rateM=1;pl.dashCd=0;pl.dashT=0;pl.inv=0;pl.hurtT=0;pl.walkPhase=0;
     unlockedWeapons={1:true};
     // Clear entities
