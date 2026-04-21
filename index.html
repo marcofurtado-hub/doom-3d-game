@@ -759,16 +759,16 @@ const EDEF={
 };
 
 const BDEF=[
-    {name:'IMP LORD',r:1.3,spd:1.8,hp:400,dmg:10,sc:500,col:0x993322,eye:0xff4444,pat:'charge',fRate:1.6,div:false},
+    {name:'IMP LORD',r:1.3,spd:1.8,hp:400,dmg:10,sc:500,col:0x993322,eye:0xff4444,pat:'leap',fRate:1.6,div:false},
     {name:'DEMON CHIEF',r:1.4,spd:2.0,hp:600,dmg:12,sc:1000,col:0x882244,eye:0xff66ff,pat:'charge',fRate:1.2,div:true,dI:0},
-    {name:'CYBERDEMON',r:1.5,spd:1.5,hp:900,dmg:14,sc:1500,col:0x8a3030,eye:0xff2200,pat:'radial',fRate:1.0,div:false},
+    {name:'CYBERDEMON',r:1.5,spd:1.5,hp:900,dmg:14,sc:1500,col:0x8a3030,eye:0xff2200,pat:'barrage',fRate:1.2,div:false},
     {name:'CACO KING',r:1.6,spd:1.3,hp:1200,dmg:14,sc:2000,col:0xcc3333,eye:0x44ff44,pat:'radial',fRate:0.8,div:true,dI:1},
     {name:'BARON LORD',r:1.5,spd:1.8,hp:1500,dmg:18,sc:2500,col:0x2a4a12,eye:0xff8800,pat:'stomp',fRate:1.2,div:false},
     {name:'SPIDER MIND',r:1.7,spd:1.0,hp:1800,dmg:16,sc:3000,col:0x665544,eye:0xff0000,pat:'spray',fRate:0.5,div:true,dI:2},
-    {name:'THE DIVIDER',r:1.5,spd:1.6,hp:1200,dmg:20,sc:3500,col:0x338855,eye:0x88ff88,pat:'charge',fRate:1.0,div:true,dI:3},
+    {name:'THE DIVIDER',r:1.5,spd:1.6,hp:1200,dmg:20,sc:3500,col:0x338855,eye:0x88ff88,pat:'summon',fRate:1.0,div:true,dI:3},
     {name:'ARCH-VILE',r:1.3,spd:2.5,hp:1600,dmg:18,sc:4000,col:0xaa7722,eye:0xffff00,pat:'blink',fRate:0.6,div:false},
-    {name:'PAIN ELEM',r:1.6,spd:1.2,hp:2000,dmg:16,sc:4500,col:0x8a5533,eye:0xff4444,pat:'summon',fRate:1.4,div:true,dI:4},
-    {name:'ICON OF SIN',r:1.9,spd:0.8,hp:2700,dmg:22,sc:6000,col:0x5a1a1a,eye:0xffff00,pat:'radial',fRate:0.5,div:true,dI:5},
+    {name:'PAIN ELEM',r:1.6,spd:1.2,hp:2000,dmg:16,sc:4500,col:0x8a5533,eye:0xff4444,pat:'swarm',fRate:1.4,div:true,dI:4},
+    {name:'ICON OF SIN',r:1.9,spd:0.8,hp:2700,dmg:22,sc:6000,col:0x5a1a1a,eye:0xffff00,pat:'iconic',fRate:0.5,div:true,dI:5},
     {name:'DARK LORD',r:2.1,spd:1.1,hp:3500,dmg:25,sc:10000,col:0x3a0a0a,eye:0xffff00,pat:'all',fRate:0.4,div:true,dI:6},
 ];
 
@@ -1401,16 +1401,18 @@ let laserBeams=[];
 // freezing the game during sustained fire of fast laser weapons).
 const _laserGeo=new THREE.BoxGeometry(0.15,0.1,1);
 const _laserMatPool=[];
-function mkLaserBeam(x1,z1,x2,z2,color=0xff2020){
-    const dx=x2-x1,dz=z2-z1,len=Math.hypot(dx,dz);
+function mkLaserBeam(x1,y1,z1,x2,y2,z2,color=0xff2020){
+    const dx=x2-x1,dy=y2-y1,dz=z2-z1,len=Math.hypot(dx,dy,dz);
     if(len<0.1)return;
     let mat;
     if(_laserMatPool.length>0){mat=_laserMatPool.pop();mat.color.setHex(color);mat.opacity=0.9;}
     else{mat=new THREE.MeshBasicMaterial({color,transparent:true,opacity:0.9});}
     const beam=new THREE.Mesh(_laserGeo,mat);
     beam.scale.set(1,1,len);
-    beam.position.set((x1+x2)/2,1.23,(z1+z2)/2);
-    beam.rotation.y=-Math.atan2(dz,dx);
+    beam.position.set((x1+x2)/2,(y1+y2)/2,(z1+z2)/2);
+    // lookAt makes object's local -Z face target; box extends along +Z,
+    // so midpoint at position → local +Z end at start, local -Z end at target. Perfect.
+    beam.lookAt(x2,y2,z2);
     scene.add(beam);
     laserBeams.push({mesh:beam,life:0.06});
 }
@@ -1422,37 +1424,45 @@ function playerShoot(){
     const dmg=w.dmg*pl.dmgM*(pl.rageT>0?2.5:1);
 
     if(w.laser){
-        // Continuous laser beam - raycast from gun tip, follows pitch (horizontal hit test only)
-        const a=pl.angle;
-        const cpL=Math.cos(pl.pitch),spL=Math.sin(pl.pitch);
-        const lrX=-Math.sin(pl.angle),lrZ=Math.cos(pl.angle);
-        const sx=pl.x+Math.cos(a)*cpL*0.7+lrX*0.25,sz=pl.z+Math.sin(a)*cpL*0.7+lrZ*0.25;
-        let ex=sx+Math.cos(a)*60,ez=sz+Math.sin(a)*60;
-        // Clamp to arena walls
-        const steps=120;const dx=Math.cos(a)*0.5,dz=Math.sin(a)*0.5;
-        let cx=sx,cz=sz;
-        for(let i=0;i<steps;i++){
-            cx+=dx;cz+=dz;
-            if(cx<-HW||cx>HW||cz<-HH||cz>HH){ex=cx;ez=cz;break;}
-            // Check inner walls
+        // True 3D beam from gun tip along aim direction (yaw + pitch).
+        const a=pl.angle,pit=pl.pitch;
+        const cp=Math.cos(pit),sp=Math.sin(pit);
+        const fx=Math.cos(a)*cp, fy=sp, fz=Math.sin(a)*cp; // aim dir (unit)
+        const rgtX=-Math.sin(a),rgtZ=Math.cos(a);
+        const sx=pl.x+Math.cos(a)*cp*0.7+rgtX*0.25;
+        const sy=1.25+sp*0.6;
+        const sz=pl.z+Math.sin(a)*cp*0.7+rgtZ*0.25;
+        // March in 3D until we hit floor/ceiling/wall
+        const stepSize=0.4,maxDist=60;
+        let cx=sx,cy=sy,cz=sz,dist=0;
+        while(dist<maxDist){
+            const nx=cx+fx*stepSize, ny=cy+fy*stepSize, nz=cz+fz*stepSize;
+            if(nx<-HW||nx>HW||nz<-HH||nz>HH)break;
+            if(ny<0.05||ny>WALL_H-0.05)break;
             let hitWall=false;
-            for(const wl of innerWalls){const hw=wl.w/2,hd=wl.d/2;
-                if(cx>=wl.x-hw&&cx<=wl.x+hw&&cz>=wl.z-hd&&cz<=wl.z+hd){hitWall=true;break;}}
-            if(hitWall){ex=cx;ez=cz;break;}
+            for(const wl of innerWalls){
+                const hw2=wl.w/2,hd2=wl.d/2;
+                if(nx>=wl.x-hw2&&nx<=wl.x+hw2&&nz>=wl.z-hd2&&nz<=wl.z+hd2){hitWall=true;break;}
+            }
+            if(hitWall)break;
+            cx=nx;cy=ny;cz=nz;dist+=stepSize;
         }
-        // Damage all enemies along the beam
-        for(const e of enemies){if(!e.alive||e.spawning)continue;
-            // Point-to-line distance
-            const lx=ex-sx,lz=ez-sz,len=Math.hypot(lx,lz);
-            if(len<0.1)continue;
-            const t=Math.max(0,Math.min(1,((e.x-sx)*lx+(e.z-sz)*lz)/(len*len)));
-            const px=sx+t*lx,pz=sz+t*lz;
-            if(Math.hypot(e.x-px,e.z-pz)<e.r+0.2){
-                e.hp-=dmg;e.hitT=0.04;spawnDmgNum(e.x,e.z,dmg);emitP(e.x,e.z,w.color,1,1);
-                if(e.hp<=0)killEn(e);
+        const ex=cx,ey=cy,ez=cz;
+        // Damage enemies along the 3D beam (XZ distance to projected point, Y range check)
+        const lx=ex-sx,lz=ez-sz,llen=Math.hypot(lx,lz);
+        if(llen>0.1){
+            for(const en of enemies){
+                if(!en.alive||en.spawning)continue;
+                const t=Math.max(0,Math.min(1,((en.x-sx)*lx+(en.z-sz)*lz)/(llen*llen)));
+                const px=sx+t*lx, pz=sz+t*lz;
+                const py=sy+t*(ey-sy);
+                if(Math.hypot(en.x-px,en.z-pz)<en.r+0.25 && py>0 && py<(en.boss?4:2.2)){
+                    en.hp-=dmg;en.hitT=0.04;spawnDmgNum(en.x,en.z,dmg);emitP(en.x,en.z,w.color,1,1);
+                    if(en.hp<=0)killEn(en);
+                }
             }
         }
-        mkLaserBeam(sx,sz,ex,ez,w.color);
+        mkLaserBeam(sx,sy,sz,ex,ey,ez,w.color);
         emitP(ex,ez,w.color,2,1);
         muzzleLight.color.setHex(w.color);
         return;
@@ -1769,6 +1779,25 @@ function update(dt){
     // Bullets
     for(const b of bullets){
         if(!b.alive)continue;
+        // Homing (for boss rockets): slowly curve toward player while homingT active
+        if(b.homingT>0){
+            b.homingT-=dt;
+            const toDx=pl.x-b.x, toDz=pl.z-b.z, tDist=Math.hypot(toDx,toDz);
+            if(tDist>0.2){
+                const curA=Math.atan2(b.vz,b.vx);
+                const tgtA=Math.atan2(toDz,toDx);
+                let diff=tgtA-curA;
+                while(diff>Math.PI)diff-=Math.PI*2;
+                while(diff<-Math.PI)diff+=Math.PI*2;
+                const maxTurn=dt*2.2;
+                const turn=Math.max(-maxTurn,Math.min(maxTurn,diff));
+                const newA=curA+turn;
+                const spd=Math.hypot(b.vx,b.vz);
+                b.vx=Math.cos(newA)*spd;
+                b.vz=Math.sin(newA)*spd;
+                emitP(b.x,b.z,b.color,1,0.8);
+            }
+        }
         b.x+=b.vx*dt;b.z+=b.vz*dt;b.y+=(b.vy||0)*dt;b.life-=dt;
         if(b.life<=0){b.alive=false;scene.remove(b.mesh);returnBulletToPool(b.mesh);if(b.light){releaseBulletLight(b.light);b.light=null;}continue;}
         // Wall ricochet - all 6 faces of the arena box
@@ -1855,6 +1884,88 @@ function update(dt){
                 walk(0.2);
                 if(e.skillT<=0&&enemies.filter(en=>en.alive&&!en.boss).length<10){e.skillT=e.fRate;for(let i=0;i<4;i++){const sa=Math.random()*Math.PI*2;enemies.push(mkEnemy('skull',e.x+Math.cos(sa)*2,e.z+Math.sin(sa)*2));}sfx.boss();}
                 if(e.shotT<=0){e.shotT=1.5;bossShoot(e,2);}
+            }else if(p==='leap'){
+                // Slow walk → telegraph → leap at player's position → land AOE
+                if(!e.leapPhase)e.leapPhase='walk';
+                if(e.leapPhase==='walk'){
+                    walk(0.35);melee();e.chgT+=dt;
+                    if(e.chgT>2.2&&d<14){e.leapPhase='wind';e.chgT=0.5;e.leapTX=pl.x;e.leapTZ=pl.z;sfx.dash();}
+                    if(e.shotT<=0){e.shotT=e.fRate;bossShoot(e,1);}
+                }else if(e.leapPhase==='wind'){
+                    e.chgT-=dt;
+                    if(Math.random()<0.4)emitP(e.x,e.z,0xff6020,1,1);
+                    if(e.chgT<=0){e.leapPhase='air';e.chgT=0.55;}
+                }else if(e.leapPhase==='air'){
+                    const ldx=e.leapTX-e.x,ldz=e.leapTZ-e.z,ldist=Math.hypot(ldx,ldz);
+                    if(ldist>0.2){e.x+=(ldx/ldist)*16*dt;e.z+=(ldz/ldist)*16*dt;}
+                    if(Math.random()<0.5)emitP(e.x,e.z,e.col,1,1);
+                    e.chgT-=dt;
+                    if(e.chgT<=0||ldist<0.5){
+                        e.leapPhase='land';e.chgT=0.35;
+                        explodeFX(e.x,e.z,3.5);shake=Math.max(shake,0.45);sfx.explode();
+                        if(dst(e,pl)<3.8&&pl.inv<=0){pl.hp-=e.dmg*0.9;pl.hurtT=0.18;triggerDamageGlitch();if(pl.hp<=0)die();}
+                    }
+                }else{
+                    e.chgT-=dt;walk(0.1);
+                    if(e.chgT<=0){e.leapPhase='walk';e.chgT=0;}
+                }
+            }else if(p==='barrage'){
+                // Strafe to keep distance + fire homing rockets at player
+                if(d<11){e.x-=(edx/d)*e.spd*0.6*dt;e.z-=(edz/d)*e.spd*0.6*dt;}
+                else if(d>16){walk(0.35);}
+                else{
+                    // Perpendicular strafe
+                    const strX=-edz/d,strZ=edx/d;
+                    const sgn=(Math.floor(gameTime*0.8)%2)?1:-1;
+                    e.x+=strX*e.spd*sgn*0.5*dt;e.z+=strZ*e.spd*sgn*0.5*dt;
+                }
+                if(e.shotT<=0){
+                    e.shotT=e.fRate;
+                    const a=Math.atan2(pl.z-e.z,pl.x-e.x);
+                    const srcY=1.3,plD=Math.hypot(pl.x-e.x,pl.z-e.z);
+                    const pit=Math.atan2(1.3-srcY,plD);
+                    const b=mkBullet(e.x+Math.cos(a)*e.r,e.z+Math.sin(a)*e.r,a,10,e.dmg*0.45,0.2,0xff5010,true,0,srcY,pit);
+                    b.life=3.5;b.homingT=2.2;b.expl=true;b.blast=3;
+                    bullets.push(b);sfx.rocket();
+                    emitP(e.x,e.z,0xff6020,4,2);
+                }
+            }else if(p==='swarm'){
+                // Spit flying skulls that chase the player + occasional shots
+                walk(0.25);
+                if(e.skillT<=0){
+                    e.skillT=e.fRate;
+                    if(enemies.filter(en=>en.alive&&!en.boss).length<12){
+                        for(let i=0;i<2;i++){
+                            const sa=Math.atan2(pl.z-e.z,pl.x-e.x)+(Math.random()-0.5)*0.5;
+                            const sk=mkEnemy('skull',e.x+Math.cos(sa)*1.8,e.z+Math.sin(sa)*1.8);
+                            sk.spd*=1.35;sk.spawning=false;sk.spawnT=0;sk.mesh.scale.set(1,1,1);
+                            enemies.push(sk);
+                        }
+                        sfx.boss();emitP(e.x,e.z,0xff4444,8,3);
+                    }
+                }
+                if(e.shotT<=0){e.shotT=e.fRate*1.6;bossShoot(e,1);}
+            }else if(p==='iconic'){
+                // ICON OF SIN: massive radial + periodic demon summons. Slow walk.
+                walk(0.15);e.radialA+=dt*1.5;
+                if(e.shotT<=0){
+                    e.shotT=e.fRate;
+                    const n=14;
+                    for(let i=0;i<n;i++){
+                        const a=e.radialA+(Math.PI*2/n)*i;
+                        const bb=mkBullet(e.x+Math.cos(a)*e.r,e.z+Math.sin(a)*e.r,a,6,e.dmg*0.28,0.14,0xffff40,true,2);
+                        bb.life=5;bullets.push(bb);
+                    }
+                    sfx.boss();
+                }
+                if(e.skillT<=0&&enemies.filter(en=>en.alive&&!en.boss).length<8){
+                    e.skillT=4.5;
+                    for(let i=0;i<3;i++){
+                        const sa=Math.random()*Math.PI*2;
+                        enemies.push(mkEnemy('demon',e.x+Math.cos(sa)*3,e.z+Math.sin(sa)*3));
+                    }
+                    emitP(e.x,e.z,0x660000,15,4);sfx.boss();
+                }
             }else if(p==='all'){
                 const cycle=Math.floor(e.skillT*-1)%5;walk(0.35);
                 if(e.shotT<=0){e.shotT=e.fRate;
