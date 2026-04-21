@@ -44,7 +44,7 @@ canvas{display:block}
 #announce{position:fixed;top:45%;left:50%;transform:translate(-50%,-50%);text-align:center;pointer-events:none;z-index:20;opacity:0;transition:opacity 0.3s}
 #announce h1{font-size:48px;color:#e03818;text-shadow:0 0 20px rgba(224,56,24,0.5)}
 #announce h2{font-size:24px;color:#d06020;margin-top:4px}
-#start-screen{position:fixed;top:0;left:0;width:100%;height:100%;display:flex;flex-direction:column;justify-content:center;align-items:center;background:rgba(0,0,0,0.92);z-index:30;padding:20px;box-sizing:border-box}
+#start-screen{position:fixed;top:0;left:0;width:100%;height:100%;display:flex;flex-direction:column;justify-content:center;align-items:center;background:rgba(0,0,0,0.92);z-index:30;padding:20px;box-sizing:border-box;overflow-y:auto;touch-action:manipulation}
 #start-screen h1{font-size:68px;color:#e03818;text-shadow:0 0 30px rgba(224,56,24,0.6);letter-spacing:4px}
 #start-screen .sub{color:#8a6a50;font-size:12px;letter-spacing:3px;margin-top:2px;text-transform:uppercase}
 #start-screen .panel{background:rgba(20,10,12,0.6);border:1px solid rgba(224,56,24,0.3);padding:14px 26px;margin-top:14px;max-width:560px;text-align:left}
@@ -55,18 +55,22 @@ canvas{display:block}
 #start-screen .red{color:#e03818}
 #start-screen .go{color:#e03818;font-size:22px;margin-top:20px;animation:pulse 1.5s infinite;letter-spacing:2px}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}
-#game-over{position:fixed;top:0;left:0;width:100%;height:100%;display:none;flex-direction:column;justify-content:center;align-items:center;background:rgba(0,0,0,0.8);z-index:30}
-#game-over h1{font-size:56px;color:#e03818}
-#game-over p{color:#b8a898;font-size:18px;margin-top:8px}
-#game-over .go{color:#e03818;font-size:20px;margin-top:20px;animation:pulse 1.5s infinite;cursor:pointer;pointer-events:auto}
+#game-over{position:fixed;top:0;left:0;width:100%;height:100%;display:none;flex-direction:column;justify-content:center;align-items:center;background:rgba(0,0,0,0.88);z-index:30;padding:20px;box-sizing:border-box;overflow-y:auto;touch-action:manipulation}
+#game-over h1{font-size:52px;color:#e03818;letter-spacing:4px}
+#game-over p{color:#b8a898;font-size:16px;margin-top:8px}
+#game-over .go{color:#e03818;font-size:18px;margin-top:16px;animation:pulse 1.5s infinite;cursor:pointer;pointer-events:auto;padding:12px 28px;border:2px solid #e03818;border-radius:4px;touch-action:manipulation;user-select:none;-webkit-tap-highlight-color:transparent}
+#game-over .go:active{background:rgba(224,56,24,0.25)}
 #go-ranking{margin-top:12px}
-#go-name{margin-top:12px}
-#go-name input{background:#1a0e10;border:2px solid #e03818;color:#e8c020;font-family:monospace;font-size:20px;padding:6px 12px;text-align:center;outline:none;width:200px}
-#go-save{cursor:pointer;pointer-events:auto;color:#e8c020;font-size:16px;margin-top:8px}
-#pause-screen{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.8);z-index:30;flex-direction:column;justify-content:center;align-items:center}
-#pause-screen h1{font-size:48px;color:#e8c020}
-#pause-screen p{color:#888;font-size:14px;margin-top:12px;line-height:2}
-#pause-screen span{color:#e03818;cursor:pointer;pointer-events:auto}
+#go-name{margin-top:12px;pointer-events:auto}
+#go-name input{background:#1a0e10;border:2px solid #e03818;color:#e8c020;font-family:monospace;font-size:20px;padding:8px 14px;text-align:center;outline:none;width:220px;touch-action:manipulation;pointer-events:auto}
+#go-save{cursor:pointer;pointer-events:auto;color:#e8c020;font-size:16px;margin-top:10px;padding:10px 24px;border:2px solid #e8c020;border-radius:4px;display:inline-block;touch-action:manipulation;user-select:none;-webkit-tap-highlight-color:transparent}
+#go-save:active{background:rgba(232,192,32,0.2)}
+#pause-screen{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.85);z-index:30;flex-direction:column;justify-content:center;align-items:center;touch-action:manipulation}
+#pause-screen h1{font-size:48px;color:#e8c020;letter-spacing:4px}
+#pause-screen p{color:#b8a898;font-size:15px;margin-top:16px;line-height:2.2}
+#pause-screen span{color:#e03818;cursor:pointer;pointer-events:auto;padding:6px 14px;border:2px solid #e03818;border-radius:4px;display:inline-block;margin:0 4px;touch-action:manipulation;user-select:none;-webkit-tap-highlight-color:transparent}
+#pause-screen span:active{background:rgba(224,56,24,0.2)}
+#pause-resume{color:#e8c020!important;border-color:#e8c020!important;font-size:18px!important;margin-top:22px!important;padding:12px 32px!important;animation:pulse 1.5s infinite}
 #hurt-vignette{position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:9;opacity:0;
     background:radial-gradient(ellipse at center,transparent 40%,rgba(180,0,0,0.7) 100%);transition:opacity 0.05s}
 #crosshair{position:fixed;top:calc(50% - 45px);left:50%;width:18px;height:18px;margin:-9px 0 0 -9px;pointer-events:none;z-index:11;display:none}
@@ -79,10 +83,10 @@ body.locked{cursor:none}
 .mbtn.on{background:rgba(224,56,24,0.55);border-color:#e8c020;color:#fff}
 body.mobile.playing .mbtn{display:flex}
 #btn-fire{bottom:110px;right:20px;width:92px;height:92px;font-size:17px;border-color:rgba(224,56,24,0.75);color:#e03818}
-#btn-dash{bottom:215px;right:32px;width:62px;height:62px;font-size:12px}
-#btn-reload{bottom:110px;right:124px;width:62px;height:62px;font-size:22px}
-#btn-wep-next{top:60px;right:20px;width:54px;height:54px;font-size:22px}
-#btn-wep-prev{top:60px;right:86px;width:54px;height:54px;font-size:22px}
+#btn-reload{bottom:110px;right:124px;width:58px;height:58px;font-size:22px}
+#btn-dash{bottom:180px;right:124px;width:58px;height:58px;font-size:12px}
+#btn-wep-next{top:14px;right:16px;width:50px;height:50px;font-size:20px}
+#btn-wep-prev{top:14px;right:72px;width:50px;height:50px;font-size:20px}
 #btn-pause{top:10px;left:50%;transform:translateX(-50%);width:40px;height:32px;font-size:14px;border-radius:6px;z-index:40;background:rgba(20,14,14,0.75);border-color:rgba(232,192,32,0.4)}
 #joy-base,#joy-knob{position:fixed;border-radius:50%;pointer-events:none;z-index:12;display:none}
 #joy-base{width:120px;height:120px;background:rgba(255,255,255,0.06);border:2px solid rgba(232,192,32,0.35)}
@@ -169,7 +173,9 @@ body.mobile #crosshair{top:calc(50% - 29px)}
 
 <div id="pause-screen">
     <h1>PAUSED</h1>
-    <p>[ESC] Resume | Volume: <span id="vol-down">[-]</span> <span id="vol-val">50%</span> <span id="vol-up">[+]</span></p>
+    <p style="color:#888;font-size:13px">Volume: <span id="vol-down">−</span> <span id="vol-val" style="color:#e8c020;padding:0 8px;border:none">50%</span> <span id="vol-up">+</span></p>
+    <p style="color:#666;font-size:11px;margin-top:4px">(ESC no desktop)</p>
+    <span id="pause-resume">▶ RESUMIR</span>
 </div>
 
 <div id="hud" style="display:none">
@@ -569,13 +575,17 @@ function hideJoy(){
     document.getElementById('joy-knob').classList.remove('on');
 }
 function onTouchStart(e){
-    if(isBtnTarget(e.target))return; // buttons handle themselves (but still add to lookTouches)
+    if(isBtnTarget(e.target))return; // game buttons handle themselves
+    // In menus/dead/paused: let native UI handle touches (input focus, button clicks)
+    if(state!=='play'||paused){
+        if(state==='menu')clicked=true; // tap-to-start menu flow
+        return; // don't preventDefault — allow normal UI interaction
+    }
     for(const t of e.changedTouches){
         const x=t.clientX,y=t.clientY;
-        if(state==='menu'||state==='dead'||paused){clicked=true;mDown=true;continue;}
         if(x<innerWidth/2){
             if(joyTouchId===null){joyTouchId=t.identifier;joyStart={x,y};showJoy(x,y);}
-            else addLook(t.identifier,x,y); // extra left-side finger also looks
+            else addLook(t.identifier,x,y);
         }else{
             addLook(t.identifier,x,y);
         }
@@ -583,6 +593,7 @@ function onTouchStart(e){
     e.preventDefault();
 }
 function onTouchMove(e){
+    if(state!=='play'||paused)return; // no preventDefault in menus = scroll/tap works
     for(const t of e.changedTouches){
         if(t.identifier===joyTouchId){
             const jdx=t.clientX-joyStart.x,jdy=t.clientY-joyStart.y;
@@ -607,7 +618,6 @@ function onTouchEnd(e){
         if(t.identifier===joyTouchId){joyTouchId=null;touchMove.str=0;touchMove.fwd=0;hideJoy();}
         if(lookTouches.has(t.identifier))removeLook(t.identifier);
     }
-    // note: mDown is controlled by fire button handlers only, not global touchend
 }
 if(isMobile){
     addEventListener('touchstart',onTouchStart,{passive:false});
@@ -1135,6 +1145,7 @@ $('go-save').onclick=()=>{const n=($goInput.value||'PLAYER').toUpperCase().slice
 $('go-restart').onclick=()=>{if(state==='dead')startGame();};
 $('vol-down').onclick=()=>{volume=Math.max(0,volume-10);$('vol-val').textContent=volume+'%';if(mvol)mvol.gain.value=volume/200;};
 $('vol-up').onclick=()=>{volume=Math.min(100,volume+10);$('vol-val').textContent=volume+'%';if(mvol)mvol.gain.value=volume/200;};
+$('pause-resume').onclick=()=>{if(state==='play'&&paused){paused=false;$pause.style.display='none';const bp=document.getElementById('btn-pause');if(bp)bp.textContent='II';}};
 
 let unlockedWeapons={1:true};
 
