@@ -1412,22 +1412,22 @@ function dst(a,b){return Math.hypot(a.x-b.x,a.z-b.z);}
 function fmtTime(s){const m=Math.floor(s/60);const ss=Math.floor(s%60);return m+':'+(ss<10?'0':'')+ss;}
 
 // ===== GLOBAL LEADERBOARD (npoint.io — anonymous, HTTPS, CORS-enabled) =====
-// Document shared by everyone who plays this build. Top 100 scores worldwide.
-// Anyone can write, anyone can read — accepted tradeoff for no-backend setup.
+// Document shared by everyone. Top 100 scores worldwide. Cache-bust query
+// param é OBRIGATÓRIO no GET: Cloudflare caches npoint responses por 1h e
+// retornaria scores velhos depois de cada POST.
 const LB_URL='https://api.npoint.io/1989f4119faa03c3b26c';
+const _lbBust=()=>LB_URL+'?t='+Date.now();
 
 async function lbFetch(){
     try{
-        const res=await fetch(LB_URL,{cache:'no-store'});
+        const res=await fetch(_lbBust(),{cache:'no-store'});
         const j=await res.json();
         return (j&&Array.isArray(j.scores))?j.scores:[];
     }catch(e){console.warn('lb fetch failed',e);return null;}
 }
 async function lbSubmit(name,sc,wave,time){
     try{
-        // Fetch current → append → sort → truncate → post back (best-effort; races
-        // can overwrite concurrent submits, but fine for a low-traffic arcade).
-        const res=await fetch(LB_URL,{cache:'no-store'});
+        const res=await fetch(_lbBust(),{cache:'no-store'});
         const j=await res.json();
         const scores=(j&&Array.isArray(j.scores))?j.scores.slice():[];
         const n=(name||'PLAYER').replace(/[^A-Za-z0-9_-]/g,'').slice(0,12)||'PLAYER';
@@ -1451,16 +1451,22 @@ function saveRanking(name,sc,wave,time){
 async function showRanking(){
     $goRank.innerHTML='<div style="color:#888;font-size:13px">carregando ranking global...</div>';
     const global=await lbFetch();
-    const list=(global&&global.length>0)?global:rankings;
-    const title=(global&&global.length>0)?`TOP ${list.length} MUNDIAL`:'TOP 10 LOCAL';
+    // lbFetch retorna array (pode ser vazio) se fetch OK, null se falhou rede.
+    const online=global!==null;
+    const list=online?global:rankings;
+    const title=online?`TOP ${list.length} MUNDIAL`:'TOP 10 LOCAL (offline)';
     let h='<div style="color:#e03818;font-size:14px;font-weight:bold;margin-bottom:6px;letter-spacing:2px">'+title+'</div>';
-    h+='<div class="lb-list"><table style="color:#b8a898;font-size:12px;border-collapse:collapse;margin:0 auto;width:100%">';
-    h+='<tr style="color:#e8c020;position:sticky;top:0;background:#1a0e10"><td style="padding:3px 6px">#</td><td>NAME</td><td>SCORE</td><td>W</td><td>TIME</td></tr>';
-    list.forEach((r,i)=>{
-        const hl=i<3?` style="color:#e8c020"`:'';
-        h+=`<tr${hl}><td style="padding:1px 6px">${i+1}</td><td>${r.name}</td><td>${r.score}</td><td>${r.wave}</td><td>${fmtTime(r.time)}</td></tr>`;
-    });
-    h+='</table></div>';
+    if(online&&list.length===0){
+        h+='<div style="color:#888;padding:20px;text-align:center">ranking vazio — seja o primeiro!</div>';
+    }else{
+        h+='<div class="lb-list"><table style="color:#b8a898;font-size:12px;border-collapse:collapse;margin:0 auto;width:100%">';
+        h+='<tr style="color:#e8c020;position:sticky;top:0;background:#1a0e10"><td style="padding:3px 6px">#</td><td>NAME</td><td>SCORE</td><td>W</td><td>TIME</td></tr>';
+        list.forEach((r,i)=>{
+            const hl=i<3?` style="color:#e8c020"`:'';
+            h+=`<tr${hl}><td style="padding:1px 6px">${i+1}</td><td>${r.name}</td><td>${r.score}</td><td>${r.wave}</td><td>${fmtTime(r.time)}</td></tr>`;
+        });
+        h+='</table></div>';
+    }
     $goRank.innerHTML=h;
 }
 $('go-save').onclick=async()=>{
