@@ -308,9 +308,78 @@ function hitFlashFX(x, z, color){}
 const AW = 50, AH = 35; // world units
 const WALL_H = 5, WALL_T = 1.5;
 
+// ===== PIXEL-ART PROCEDURAL TEXTURES =====
+// Generated once on a 64px canvas; NearestFilter preserves the pixel look.
+// Total memory ~20KB for all four — basically free.
+function mkPixTex(size, paintFn, rx=1, ry=1){
+    const c=document.createElement('canvas');c.width=c.height=size;
+    const ctx=c.getContext('2d');paintFn(ctx,size);
+    const t=new THREE.CanvasTexture(c);
+    t.magFilter=THREE.NearestFilter;t.minFilter=THREE.NearestFilter;
+    t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(rx,ry);
+    return t;
+}
+function paintFloor(ctx,s){
+    for(let y=0;y<s;y++)for(let x=0;x<s;x++){
+        const n=(Math.random()-0.5)*14;
+        const r=Math.max(0,58+n)|0,g=Math.max(0,42+n)|0,b=Math.max(0,32+n)|0;
+        ctx.fillStyle=`rgb(${r},${g},${b})`;ctx.fillRect(x,y,1,1);
+    }
+    // Brick offset mortar
+    ctx.fillStyle='rgba(0,0,0,0.55)';
+    for(let y=0;y<s;y+=16)ctx.fillRect(0,y,s,1);
+    for(let y=0;y<s;y+=16){
+        const off=(y/16)%2===0?0:8;
+        for(let x=-off;x<s;x+=16)ctx.fillRect(x,y,1,16);
+    }
+    // Cracks
+    ctx.fillStyle='rgba(0,0,0,0.35)';
+    for(let i=0;i<10;i++)ctx.fillRect(Math.random()*s|0,Math.random()*s|0,2+(Math.random()*3|0),1);
+}
+function paintWall(ctx,s){
+    for(let y=0;y<s;y++)for(let x=0;x<s;x++){
+        const n=(Math.random()-0.5)*18;
+        const r=Math.max(0,92+n)|0,g=Math.max(0,32+n*0.5)|0,b=Math.max(0,28+n*0.4)|0;
+        ctx.fillStyle=`rgb(${r},${g},${b})`;ctx.fillRect(x,y,1,1);
+    }
+    // Brick rows
+    ctx.fillStyle='rgba(0,0,0,0.7)';
+    for(let y=0;y<s;y+=16)ctx.fillRect(0,y,s,2);
+    for(let y=0;y<s;y+=16){
+        const off=(y/16)%2===0?0:16;
+        for(let x=-off;x<s;x+=32)ctx.fillRect(x,y,2,16);
+    }
+    // Top highlight
+    ctx.fillStyle='rgba(220,110,80,0.22)';
+    for(let y=2;y<s;y+=16)ctx.fillRect(0,y,s,1);
+    // Dark grime blotches
+    for(let i=0;i<12;i++){
+        ctx.fillStyle=`rgba(0,0,0,${0.2+Math.random()*0.3})`;
+        ctx.fillRect(Math.random()*s|0,Math.random()*s|0,2+(Math.random()*3|0),2+(Math.random()*3|0));
+    }
+}
+function paintCeiling(ctx,s){
+    for(let y=0;y<s;y++)for(let x=0;x<s;x++){
+        const n=(Math.random()-0.5)*10;
+        const r=Math.max(0,12+n)|0,g=Math.max(0,9+n*0.5)|0,b=Math.max(0,14+n)|0;
+        ctx.fillStyle=`rgb(${r},${g},${b})`;ctx.fillRect(x,y,1,1);
+    }
+    // Metal panel lines
+    ctx.fillStyle='rgba(255,230,210,0.05)';
+    for(let y=0;y<s;y+=16)ctx.fillRect(0,y,s,1);
+    for(let x=0;x<s;x+=16)ctx.fillRect(x,0,1,s);
+    // Rivets at corners
+    ctx.fillStyle='rgba(60,40,40,0.9)';
+    for(let y=2;y<s;y+=16)for(let x=2;x<s;x+=16)ctx.fillRect(x,y,2,2);
+}
+const floorTex=mkPixTex(64,paintFloor,AW/4,AH/4);
+const outerWallTex=mkPixTex(64,paintWall,7,1.4);
+const innerWallTex=mkPixTex(64,paintWall,2,1.2);
+const ceilTex=mkPixTex(64,paintCeiling,AW/5,AH/5);
+
 // Floor
 const floorGeo = new THREE.PlaneGeometry(AW, AH, 20, 14);
-const floorMat = new THREE.MeshLambertMaterial({color:0x3a2e28});
+const floorMat = new THREE.MeshLambertMaterial({map:floorTex});
 const floor = new THREE.Mesh(floorGeo, floorMat);
 floor.rotation.x = -Math.PI/2;
 floor.receiveShadow = true;
@@ -318,20 +387,15 @@ scene.add(floor);
 
 // Ceiling - darker
 const ceilGeo = new THREE.PlaneGeometry(AW, AH);
-const ceilMat = new THREE.MeshLambertMaterial({color:0x060408});
+const ceilMat = new THREE.MeshLambertMaterial({map:ceilTex});
 const ceiling = new THREE.Mesh(ceilGeo, ceilMat);
 ceiling.rotation.x = Math.PI/2;
 ceiling.position.y = WALL_H;
 ceiling.castShadow = false; ceiling.receiveShadow = false;
 scene.add(ceiling);
 
-// Floor grid lines
-const gridHelper = new THREE.GridHelper(Math.max(AW,AH), 20, 0x2a1518, 0x1a0e10);
-gridHelper.position.y = 0.01;
-scene.add(gridHelper);
-
 // Walls
-const wallMat = new THREE.MeshPhongMaterial({color:0x5a3838, emissive:0x2a1414});
+const wallMat = new THREE.MeshPhongMaterial({map:outerWallTex,color:0xffffff,emissive:0x1a0808});
 function mkWall(w,h,d,x,y,z){
     const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d), wallMat);
     m.position.set(x,y,z);m.castShadow=true;m.receiveShadow=true;scene.add(m);return m;
@@ -381,7 +445,7 @@ function genMaze3D(){
     innerWallMeshes.forEach(m=>scene.remove(m));
     innerWallMeshes=[];innerWalls=[];
     const layout=MAZE_LAYOUTS[Math.floor(Math.random()*MAZE_LAYOUTS.length)];
-    const wallMat2=new THREE.MeshPhongMaterial({color:0x6a3838,emissive:0x2a1414});
+    const wallMat2=new THREE.MeshPhongMaterial({map:innerWallTex,color:0xffffff,emissive:0x1a0808});
     for(const def of layout){
         // Mirror symmetrically (4-way for non-axis, 2-way for axis walls)
         const positions=[];
