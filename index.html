@@ -480,27 +480,11 @@ function mkBlobShadow(radius){
     return m;
 }
 
-// Apply a texture to main body parts of an entity mesh (skip glowing parts).
-// Creates new MeshPhongMaterial with map built-in — more reliable than
-// mutating `map` + `needsUpdate` after shader compilation.
-function applyEntityTex(group,tex){
-    group.traverse(c=>{
-        if(!c.isMesh||!c.material||c.userData.isBlob)return;
-        const e=c.material.emissive,col=c.material.color;
-        if(!col)return;
-        if(e){
-            const d=Math.abs(e.r-col.r)+Math.abs(e.g-col.g)+Math.abs(e.b-col.b);
-            if(d<0.35)return; // glowing part — skip
-        }
-        const oldMat=c.material;
-        c.material=new THREE.MeshPhongMaterial({
-            color:col.getHex(),
-            emissive:e?e.getHex():0,
-            map:tex
-        });
-        oldMat.dispose();
-    });
-}
+// Global texture override used by mkBoxMesh during entity construction.
+// Set before creating an entity's parts, unset after. No material replacement
+// (which was causing crashes) — the texture is baked in at material creation.
+let _currentTex=null;
+function applyEntityTex(){} // no-op kept for back-compat with older call-sites
 
 // Floor
 const floorGeo = new THREE.PlaneGeometry(AW, AH, 20, 14);
@@ -996,7 +980,7 @@ const _particleGeo=new THREE.BoxGeometry(1,1,1);
 
 function mkBoxMesh(w,h,d,color,emissive=0x000000){
     const geo=new THREE.BoxGeometry(w,h,d);
-    const mat=new THREE.MeshPhongMaterial({color,emissive});
+    const mat=new THREE.MeshPhongMaterial({color,emissive,map:_currentTex});
     const m=new THREE.Mesh(geo,mat);m.castShadow=true;m.receiveShadow=true;return m;
 }
 function mkSphereMesh(r,color){
@@ -1096,6 +1080,8 @@ function buildFPWeapon(id){
         if(c.geometry)c.geometry.dispose();
         if(c.material)c.material.dispose();
     }
+    // Apply wood grain to shotgun stock, metal to everything else (baked into mkBoxMesh)
+    _currentTex = id===2 ? _woodTex : _metalTex;
     const X=0.26,Y=-0.22;
     if(id===1){ // PISTOL - small handgun
         _fpPart(0.08,0.08,0.35,0x555555,X,Y,-0.52,0x111111);
@@ -1170,8 +1156,7 @@ function buildFPWeapon(id){
         _fpPart(0.05,0.07,0.04,0xe8c020,X,Y+0.18,-0.55,0xe8c020);
         _fpPart(0.13,0.2,0.16,0x1a1a1a,X,Y-0.19,-0.28);
     }
-    // Shotgun gets wood grain, others get metal texture. Glowing emitters auto-skipped.
-    applyEntityTex(fpGun, id===2?_woodTex:_metalTex);
+    _currentTex=null; // reset for subsequent non-entity mesh creations
     fpGunCurrent=id;
 }
 buildFPWeapon(1);
@@ -1179,6 +1164,7 @@ buildFPWeapon(1);
 // ===== ENTITY FACTORIES =====
 function mkEnemy(type,x,z){
     const d=EDEF[type];const hpM=1+(waveNum-1)*0.08;
+    _currentTex=_fleshTex; // all enemies get flesh texture on their parts
     const mesh=new THREE.Group();
     let legL=null,legR=null;
 
@@ -1232,9 +1218,9 @@ function mkEnemy(type,x,z){
         legR=mkBoxMesh(0.2,0.45,0.2,0x2a3a12);legR.position.set(0.12,0.3,0);mesh.add(legR);
     }
 
+    _currentTex=null;
     mesh.position.set(x,0,z);mesh.scale.set(0.01,0.01,0.01);
     mesh.traverse(c=>{if(c.isMesh)c.castShadow=false;});
-    applyEntityTex(mesh,_fleshTex);
     mesh.add(mkBlobShadow(d.r*0.95));
     scene.add(mesh);
     const ent={alive:true,type,x,z,r:d.r,spd:d.spd,hp:d.hp*hpM,maxHp:d.hp*hpM,dmg:d.dmg,sc:d.sc,
@@ -1247,6 +1233,8 @@ function mkEnemy(type,x,z){
 
 function mkBoss(idx,x,z){
     const d=BDEF[idx];const s=d.r*1.8;
+    // CYBERDEMON (idx 2) is metallic, all others get flesh texture
+    _currentTex = idx===2 ? _metalTex : _fleshTex;
     const mesh=new THREE.Group();
     let legL=null,legR=null;
     const darker=(c)=>{const r=(c>>16)&0xff,g=(c>>8)&0xff,b=c&0xff;return ((r*0.6|0)<<16)|((g*0.6|0)<<8)|(b*0.6|0);};
@@ -1402,10 +1390,9 @@ function mkBoss(idx,x,z){
         legR=mkBoxMesh(s*0.25,s*0.5,s*0.25,col2);legR.position.set(s*0.2,s*0.2,0);mesh.add(legR);
     }
 
+    _currentTex=null;
     mesh.position.set(x,0,z);mesh.scale.set(0.01,0.01,0.01);
     mesh.traverse(c=>{if(c.isMesh)c.castShadow=false;});
-    // Apply material: metal for CYBERDEMON (idx 2), flesh for all others
-    applyEntityTex(mesh, idx===2?_metalTex:_fleshTex);
     mesh.add(mkBlobShadow(d.r*1.25));
     scene.add(mesh);
     const bhp=d.hp*1.3;
@@ -1451,9 +1438,10 @@ function mkCrate(x,z){
     const wi=isWep?unlKeys[Math.floor(Math.random()*unlKeys.length)]:0;
     const color=isWep?0xaa8840:0x308898;
     const g=new THREE.Group();
+    _currentTex=_metalTex;
     const box=mkBoxMesh(0.8,0.8,0.8,color,isWep?0x1a1008:0x081a18);
+    _currentTex=null;
     box.castShadow=false;g.add(box);
-    applyEntityTex(g,_metalTex);
     const blob=mkBlobShadow(0.6);blob.position.y=-0.38;g.add(blob);
     g.position.set(x,0,z);g.scale.set(0.01,0.01,0.01);scene.add(g);
     crates.push({alive:true,x,z,r:0.5,kind:isWep?'wep':'ammo',wi,mesh:g,t:0,spawnT:0.3});
