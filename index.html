@@ -56,6 +56,13 @@ canvas{display:block}
 #start-screen .go{color:#e03818;font-size:22px;margin-top:20px;animation:pulse 1.5s infinite;letter-spacing:2px}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}
 #game-over{position:fixed;top:0;left:0;width:100%;height:100%;display:none;flex-direction:column;justify-content:center;align-items:center;background:rgba(0,0,0,0.88);z-index:30;padding:20px;box-sizing:border-box;overflow-y:auto;touch-action:manipulation}
+#victory{position:fixed;top:0;left:0;width:100%;height:100%;display:none;flex-direction:column;justify-content:center;align-items:center;background:radial-gradient(ellipse at center,rgba(80,30,0,0.9) 0%,rgba(0,0,0,0.95) 100%);z-index:32;padding:20px;box-sizing:border-box;overflow-y:auto;touch-action:manipulation}
+#victory h1{font-size:58px;color:#ffcc20;letter-spacing:6px;text-shadow:0 0 30px #ff8040,0 0 60px #ff4020;animation:pulse 1.5s infinite}
+#victory h2{font-size:22px;color:#e8c020;margin-top:4px;letter-spacing:4px}
+#victory p{color:#e0c090;font-size:15px;margin-top:10px}
+#victory .go{color:#ffcc20;font-size:18px;margin-top:16px;cursor:pointer;pointer-events:auto;padding:12px 28px;border:2px solid #ffcc20;border-radius:4px;touch-action:manipulation;user-select:none;-webkit-tap-highlight-color:transparent}
+#victory .go:active{background:rgba(255,204,32,0.25)}
+#nuke-flash{position:fixed;inset:0;background:#fff;opacity:0;pointer-events:none;z-index:31;transition:opacity 0.08s}
 #game-over h1{font-size:52px;color:#e03818;letter-spacing:4px}
 #game-over p{color:#b8a898;font-size:16px;margin-top:8px}
 #game-over .go{color:#e03818;font-size:18px;margin-top:16px;animation:pulse 1.5s infinite;cursor:pointer;pointer-events:auto;padding:12px 28px;border:2px solid #e03818;border-radius:4px;touch-action:manipulation;user-select:none;-webkit-tap-highlight-color:transparent}
@@ -146,7 +153,8 @@ body.mobile #crosshair{top:calc(50% - 29px)}
         ▸ Atire nos <span class="hl">crates</span> pra soltar arma ou munição<br>
         ▸ Pegue <span style="color:#60c0ff">SHIELD azul</span> pra 10s de proteção<br>
         ▸ Pegue <span class="red">RAGE vermelho</span> pra 5s de dano brutal<br>
-        ▸ Sem checkpoint — morreu, recomeça do zero (<span class="red">roguelike</span>)
+        ▸ Sem checkpoint — morreu, recomeça do zero (<span class="red">roguelike</span>)<br>
+        ▸ Ultimate: <span style="color:#ffcc20">NUKE</span> (arma 9) — uso único, <span class="hl">ganha o jogo</span>
         </p>
     </div>
 
@@ -183,6 +191,20 @@ body.mobile #crosshair{top:calc(50% - 29px)}
     </div>
     <div class="go" id="go-restart">[ REINICIAR ]</div>
 </div>
+
+<div id="victory">
+    <h1>CONGRATULATIONS!</h1>
+    <h2>YOU DEFEATED THE INFERNO</h2>
+    <p id="v-stats"></p>
+    <div id="v-ranking"></div>
+    <div id="v-name">
+        <p style="color:#ffcc20;font-size:16px">Enter your name:</p>
+        <input id="v-input" type="text" maxlength="10" placeholder="CHAMPION" style="background:#1a0e10;border:2px solid #ffcc20;color:#ffcc20;font-family:monospace;font-size:20px;padding:8px 14px;text-align:center;outline:none;width:220px;touch-action:manipulation;pointer-events:auto">
+        <div id="v-save" class="go">[ SAVE ]</div>
+    </div>
+    <div class="go" id="v-restart">[ NEW GAME ]</div>
+</div>
+<div id="nuke-flash"></div>
 
 <div id="pause-screen">
     <h1>PAUSED</h1>
@@ -823,15 +845,15 @@ const WEAP={
     1:{name:'PISTOL',rate:0.18,dmg:20,spd:30,spread:0.03,count:1,sz:0.12,color:0xe8c020,sfx:'shoot',maxAmmo:Infinity,ric:3},
     2:{name:'SHOTGUN',rate:0.45,dmg:16,spd:26,spread:0.15,count:8,sz:0.1,color:0xd06020,sfx:'shotgun',maxAmmo:28,rTime:0.9,ric:1},
     3:{name:'CHAINGUN',rate:0.06,dmg:16,spd:34,spread:0.07,count:1,sz:0.1,color:0xe8d040,sfx:'chain',maxAmmo:150,rTime:1.1,ric:2},
-    4:{name:'ROCKET',rate:0.5,dmg:150,spd:30,spread:0.008,count:1,sz:0.22,color:0xe03818,sfx:'rocket',maxAmmo:15,rTime:1.3,ric:0,expl:true,blast:11},
+    4:{name:'ROCKET',rate:0.5,dmg:150,spd:30,spread:0.008,count:1,sz:0.22,color:0xe03818,sfx:'rocket',maxAmmo:15,rTime:1.3,ric:0,expl:true,blast:7},
     5:{name:'PURPLE LASER',rate:0.04,dmg:34,spd:60,spread:0.005,count:1,sz:0.1,color:0xb040ff,sfx:'laser',maxAmmo:300,rTime:1.0,ric:0,laser:true},
-    6:{name:'BOMB LAUNCHER',rate:1.1,dmg:360,spd:22,spread:0.015,count:1,sz:0.32,color:0xffaa00,sfx:'bomb',maxAmmo:6,rTime:1.9,ric:0,expl:true,blast:14},
-    7:{name:'MOLOTOV',rate:0.9,dmg:120,spd:16,spread:0.03,count:1,sz:0.2,color:0xd06020,sfx:'molotov',maxAmmo:8,rTime:1.3,ric:0,fire:true,blast:3.5},
-    8:{name:'LASER',rate:0.02,dmg:10,spd:60,spread:0.01,count:1,sz:0.08,color:0xff2020,sfx:'laser',maxAmmo:200,rTime:0.8,ric:6,laser:true},
-    9:{name:'MEGA BOMB',rate:2.0,dmg:500,spd:10,spread:0.01,count:1,sz:0.4,color:0xff4400,sfx:'megabomb',maxAmmo:3,rTime:2.5,ric:0,expl:true,blast:9},
+    6:{name:'DOUBLE SHOTGUN',rate:0.55,dmg:32,spd:26,spread:0.18,count:12,sz:0.11,color:0xff8030,sfx:'shotgun',maxAmmo:24,rTime:1.1,ric:1},
+    7:{name:'FLAMETHROWER',rate:0.04,dmg:8,spd:14,spread:0.09,count:1,sz:0.18,color:0xff6020,sfx:'molotov',maxAmmo:400,rTime:1.4,ric:0,fireGround:true,life:0.45},
+    8:{name:'RED LASER',rate:0.03,dmg:68,spd:60,spread:0.006,count:1,sz:0.08,color:0xff2020,sfx:'laser',maxAmmo:250,rTime:0.9,ric:0,laser:true,flat:true},
+    9:{name:'NUKE',rate:5,dmg:99999,spd:1,spread:0,count:1,sz:1,color:0xffffff,sfx:'megabomb',maxAmmo:1,rTime:99,ric:0,nuke:true},
 };
 const WC=9;
-const ammo={2:28,3:150,4:12,5:80,6:6,7:8,8:200,9:3};
+const ammo={2:28,3:150,4:12,5:80,6:12,7:200,8:100,9:1};
 let reloading=false,reloadT=0;
 
 const EDEF={
@@ -877,7 +899,7 @@ const pl={x:0,z:0,r:0.5,angle:0,pitch:0,hp:20,maxHp:20,spd:10,wep:1,shotT:0,shot
 const PITCH_MAX=1.35; // ~77° up/down
 
 // Entity arrays
-let enemies=[],bullets=[],particles=[],crates=[],pickups=[];
+let enemies=[],bullets=[],particles=[],crates=[],pickups=[],firePatches=[];
 let powerupT=18+Math.random()*10;
 
 // ===== 3D MESH HELPERS =====
@@ -1039,19 +1061,23 @@ function buildFPWeapon(id){
         _fpPart(0.13,0.03,0.22,0x2a1240,X,Y+0.07,-0.5); // top rail
         _fpPart(0.04,0.05,0.04,0xff60ff,X,Y+0.11,-0.56,0xff60ff); // violet sight
         _fpPart(0.11,0.17,0.14,0x140820,X,Y-0.16,-0.3); // grip
-    }else if(id===6){ // BOMB LAUNCHER - huge fat barrel + visible shell
-        _fpPart(0.24,0.24,0.38,0x444444,X,Y,-0.42,0x181818);
-        _fpPart(0.17,0.17,0.15,0xffaa00,X,Y,-0.7,0xff6010); // visible bomb shell
-        _fpPart(0.08,0.06,0.06,0xffcc40,X,Y,-0.82,0xffcc40); // glowing tip
-        _fpPart(0.28,0.05,0.4,0x3a3a3a,X,Y+0.14,-0.42); // top rail
-        _fpPart(0.05,0.06,0.1,0xe8c020,X,Y+0.2,-0.5,0xe8c020); // scope
-        _fpPart(0.13,0.19,0.16,0x2a2a2a,X,Y-0.19,-0.25); // trigger grip
-    }else if(id===7){ // MOLOTOV - hand-thrown bottle
-        _fpPart(0.1,0.14,0.1,0x3a2418,X,Y-0.05,-0.25); // hand
-        _fpPart(0.09,0.24,0.09,0xd06020,X,Y+0.12,-0.35,0x502008); // glass bottle
-        _fpPart(0.07,0.03,0.07,0x3a2418,X,Y+0.25,-0.35); // cork
-        _fpPart(0.05,0.12,0.05,0xff4010,X,Y+0.36,-0.35,0xff4010); // flame rag
-        _fpPart(0.04,0.08,0.04,0xffa020,X,Y+0.44,-0.35,0xffa020); // flame tip
+    }else if(id===6){ // DOUBLE SHOTGUN - two wooden barrels side by side
+        _fpPart(0.13,0.1,0.58,0x5a3a20,X,Y,-0.46,0x201008); // right barrel wood
+        _fpPart(0.08,0.08,0.62,0x1a1a1a,X+0.06,Y+0.03,-0.45); // right barrel metal
+        _fpPart(0.08,0.08,0.62,0x1a1a1a,X-0.06,Y+0.03,-0.45); // left barrel metal
+        _fpPart(0.05,0.06,0.12,0x2a2a2a,X,Y+0.03,-0.76); // muzzle gap
+        _fpPart(0.12,0.08,0.2,0x7a5020,X,Y-0.07,-0.52); // lever
+        _fpPart(0.15,0.18,0.22,0x5a3a20,X,Y-0.04,-0.2); // wooden stock
+        _fpPart(0.04,0.04,0.03,0xff8030,X,Y+0.12,-0.7,0xff8030); // orange sight
+    }else if(id===7){ // FLAMETHROWER - nozzle + fuel tank, flame at tip
+        _fpPart(0.12,0.12,0.42,0x2a2a2a,X,Y,-0.48,0x080808); // main tube
+        _fpPart(0.17,0.17,0.08,0x3a3a3a,X,Y,-0.74); // nozzle cap
+        _fpPart(0.2,0.2,0.04,0x222222,X,Y,-0.8); // nozzle front
+        _fpPart(0.15,0.12,0.08,0xff8020,X,Y,-0.84,0xff8020); // flame source
+        _fpPart(0.1,0.08,0.05,0xffcc40,X,Y,-0.89,0xffcc40); // inner flame
+        _fpPart(0.16,0.26,0.2,0x4a4a4a,X-0.15,Y+0.04,-0.35); // fuel tank attached
+        _fpPart(0.05,0.05,0.22,0x1a1a1a,X-0.12,Y,-0.55); // fuel hose
+        _fpPart(0.11,0.16,0.14,0x222222,X,Y-0.16,-0.22); // grip
     }else if(id===8){ // LASER RIFLE - sleek with red emitter
         _fpPart(0.07,0.07,0.55,0x888888,X,Y,-0.5);
         _fpPart(0.06,0.06,0.06,0xff2020,X,Y,-0.81,0xff2020); // red emitter
@@ -1317,6 +1343,23 @@ function mkBullet(x,z,a,spd,dmg,sz,color,enemy,ric=0,y=1.15,pit=0){
         dmg,sz,color,enemy,life:3,mesh,ric,bounces:0,expl:false,fire:false,blast:0};
 }
 
+// Fire patch — persistent ground flame from flamethrower.
+// Damage enemies in radius over time. Animated pulsing disc.
+const _fireGeo=new THREE.CylinderGeometry(1,1,0.1,8);
+function mkFirePatch(x,z){
+    // Merge with nearby existing patch instead of spawning a new one (cap draws)
+    for(const fp of firePatches){
+        if(fp.alive&&Math.hypot(fp.x-x,fp.z-z)<0.8){fp.life=Math.min(4.5,fp.life+0.6);return;}
+    }
+    if(firePatches.length>=25)return; // cap
+    const mat=new THREE.MeshBasicMaterial({color:0xff5020,transparent:true,opacity:0.6});
+    const m=new THREE.Mesh(_fireGeo,mat);
+    m.position.set(x,0.06,z);
+    m.scale.set(0.8,1,0.8);
+    scene.add(m);
+    firePatches.push({alive:true,x,z,r:1.0,life:3.0,mesh:m,dmgPerSec:22,t:Math.random()*6});
+}
+
 function mkPickup(x,z,kind){
     // kind: 'shield' (blue, 10s invuln) | 'rage' (red, 5s damage buff + invuln)
     const g=new THREE.Group();
@@ -1482,6 +1525,65 @@ $('vol-down').onclick=()=>{volume=Math.max(0,volume-10);$('vol-val').textContent
 $('vol-up').onclick=()=>{volume=Math.min(100,volume+10);$('vol-val').textContent=volume+'%';if(mvol)mvol.gain.value=volume/200;};
 $('pause-resume').onclick=()=>{if(state==='play'&&paused){paused=false;$pause.style.display='none';const bp=document.getElementById('btn-pause');if(bp)bp.textContent='II';}};
 
+// ===== VICTORY / NUKE =====
+const $victory=$('victory'),$vStats=$('v-stats'),$vRank=$('v-ranking'),$vName=$('v-name'),$vInput=$('v-input'),$nukeFlash=$('nuke-flash');
+async function showVictoryRanking(){
+    $vRank.innerHTML='<div style="color:#888;font-size:13px">carregando ranking global...</div>';
+    const global=await lbFetch();
+    const online=global!==null;
+    const list=online?global:rankings;
+    const title=online?`TOP ${list.length} MUNDIAL`:'TOP 10 LOCAL (offline)';
+    let h='<div style="color:#ffcc20;font-size:14px;font-weight:bold;margin-bottom:6px;letter-spacing:2px">'+title+'</div>';
+    if(online&&list.length===0){
+        h+='<div style="color:#888;padding:20px;text-align:center">seja o primeiro!</div>';
+    }else{
+        h+='<div class="lb-list"><table style="color:#b8a898;font-size:12px;border-collapse:collapse;margin:0 auto;width:100%">';
+        h+='<tr style="color:#ffcc20;position:sticky;top:0;background:#1a0e10"><td style="padding:3px 6px">#</td><td>NAME</td><td>SCORE</td><td>W</td><td>TIME</td></tr>';
+        list.forEach((r,i)=>{
+            const hl=i<3?` style="color:#ffcc20"`:'';
+            h+=`<tr${hl}><td style="padding:1px 6px">${i+1}</td><td>${r.name}</td><td>${r.score}</td><td>${r.wave}</td><td>${fmtTime(r.time)}</td></tr>`;
+        });
+        h+='</table></div>';
+    }
+    $vRank.innerHTML=h;
+}
+function triggerNuke(){
+    if(state!=='play')return;
+    state='won';
+    shake=1.8;
+    // White flash
+    $nukeFlash.style.opacity='1';
+    setTimeout(()=>$nukeFlash.style.opacity='0',600);
+    // Obliterate everything in the arena
+    for(const e of enemies.slice()){if(e.alive){e.hp=0;killEn(e);}}
+    sfx.megabomb();sfx.explode();
+    emitP(pl.x,pl.z,0xffee80,30,8);
+    // Victory bonus score
+    score+=50000;
+    if(score>hiScore){hiScore=score;localStorage.setItem('doom3dHi',hiScore);}
+    stopMusic();
+    // Show the victory screen after the flash
+    setTimeout(()=>{
+        $victory.style.display='flex';
+        $hud.style.display='none';$doomHud.classList.add('hidden');$crosshair.style.display='none';
+        document.body.classList.remove('playing');
+        if(document.pointerLockElement)document.exitPointerLock();
+        $vStats.textContent=`Score: ${score} | Wave: ${waveNum} | Kills: ${kills} | Time: ${fmtTime(gameTime)}`;
+        $vInput.value='';$vName.style.display='block';
+        showVictoryRanking();
+        setTimeout(()=>$vInput.focus(),100);
+    },900);
+}
+$('v-save').onclick=async()=>{
+    const n=($vInput.value||'CHAMPION').toUpperCase().slice(0,10);
+    $vName.style.display='none';
+    saveRanking(n,score,waveNum,gameTime);
+    $vRank.innerHTML='<div style="color:#ffcc20;font-size:13px">enviando score...</div>';
+    await lbSubmit(n,score,waveNum,gameTime);
+    showVictoryRanking();
+};
+$('v-restart').onclick=()=>{if(state==='won'){$victory.style.display='none';state='dead';startGame();}};
+
 let unlockedWeapons={1:true};
 
 function startGame(){
@@ -1500,8 +1602,9 @@ function startGame(){
     crates.forEach(c=>{if(c.mesh)scene.remove(c.mesh);});
     pickups.forEach(p=>{if(p.mesh)scene.remove(p.mesh);});
     bloodPools.forEach(bp=>{if(bp.mesh)scene.remove(bp.mesh);});
+    firePatches.forEach(fp=>{if(fp.mesh){scene.remove(fp.mesh);if(fp.mesh.material)fp.mesh.material.dispose();}});
     explFlashes.forEach(f=>scene.remove(f.light));explFlashes=[];
-    enemies=[];bullets=[];particles=[];crates=[];pickups=[];bloodPools=[];
+    enemies=[];bullets=[];particles=[];crates=[];pickups=[];bloodPools=[];firePatches=[];
     // Clean stray laser beams from last run
     laserBeams.forEach(lb=>{scene.remove(lb.mesh);if(_laserMatPool.length<30)_laserMatPool.push(lb.mesh.material);});
     laserBeams=[];
@@ -1519,6 +1622,7 @@ function startGame(){
 }
 
 function die(){
+    if(state!=='play')return; // don't override 'won' or 'dead' or 'menu'
     state='dead';pl.hp=0;
     if(score>hiScore){hiScore=score;localStorage.setItem('doom3dHi',hiScore);}
     stopMusic();sfx.explode();emitP(pl.x,pl.z,0xe03818,20,5);
@@ -1548,19 +1652,22 @@ let laserBeams=[];
 // Avoids allocating a fresh BoxGeometry per shot (which was leaking GPU mem and
 // freezing the game during sustained fire of fast laser weapons).
 const _laserGeo=new THREE.BoxGeometry(0.15,0.1,1);
+const _laserFlatGeo=new THREE.BoxGeometry(0.6,0.06,1); // wide + flat for red laser plates
 const _laserMatPool=[];
-function mkLaserBeam(x1,y1,z1,x2,y2,z2,color=0xff2020){
+function mkLaserBeam(x1,y1,z1,x2,y2,z2,color=0xff2020,flat=false){
     const dx=x2-x1,dy=y2-y1,dz=z2-z1,len=Math.hypot(dx,dy,dz);
     if(len<0.1)return;
     let mat;
-    if(_laserMatPool.length>0){mat=_laserMatPool.pop();mat.color.setHex(color);mat.opacity=0.9;}
-    else{mat=new THREE.MeshBasicMaterial({color,transparent:true,opacity:0.9});}
-    const beam=new THREE.Mesh(_laserGeo,mat);
+    if(_laserMatPool.length>0){mat=_laserMatPool.pop();mat.color.setHex(color);mat.opacity=flat?0.85:0.9;}
+    else{mat=new THREE.MeshBasicMaterial({color,transparent:true,opacity:flat?0.85:0.9});}
+    const beam=new THREE.Mesh(flat?_laserFlatGeo:_laserGeo,mat);
     beam.scale.set(1,1,len);
-    beam.position.set((x1+x2)/2,(y1+y2)/2,(z1+z2)/2);
-    // lookAt makes object's local -Z face target; box extends along +Z,
-    // so midpoint at position → local +Z end at start, local -Z end at target. Perfect.
+    // Trembling offset for flat laser — gives a "vibrating plate" feel
+    const tx=flat?(Math.random()-0.5)*0.08:0;
+    const ty=flat?(Math.random()-0.5)*0.08:0;
+    beam.position.set((x1+x2)/2+tx,(y1+y2)/2+ty,(z1+z2)/2);
     beam.lookAt(x2,y2,z2);
+    if(flat)beam.rotation.z+=(Math.random()-0.5)*0.15; // slight tilt tremble
     scene.add(beam);
     laserBeams.push({mesh:beam,life:0.06});
 }
@@ -1585,6 +1692,8 @@ function playerShoot(){
     const w=WEAP[pl.wep];
     pl.shotT=w.rate*pl.rateM;sfx[w.sfx]();shake=Math.max(shake,w.sz>0.15?0.3:0.1);
     triggerMuzzleFlash(w.color);
+    // NUKE: single-use weapon that ends the run in victory
+    if(w.nuke){triggerNuke();return;}
     const dmg=w.dmg*pl.dmgM*(pl.rageT>0?2.5:1);
 
     if(w.laser){
@@ -1624,7 +1733,7 @@ function playerShoot(){
                 }
             }
         }
-        mkLaserBeam(sx,sy,sz,ex,ey,ez,w.color);
+        mkLaserBeam(sx,sy,sz,ex,ey,ez,w.color,w.flat);
         emitP(ex,ez,w.color,2,1);
         muzzleLight.color.setHex(w.color);
         return;
@@ -1639,8 +1748,12 @@ function playerShoot(){
         const pit=pl.pitch+(Math.random()-0.5)*w.spread; // small vertical spread too
         const b=mkBullet(tipX,tipZ,a,w.spd,dmg,w.sz,w.color,false,w.ric||0,tipY,pit);
         b.expl=w.expl||false;b.fire=w.fire||false;b.blast=w.blast||0;
+        b.fireGround=w.fireGround||false;
+        if(w.life)b.life=w.life; // flamethrower = short range
         b.light = acquireBulletLight(w.color);
         bullets.push(b);
+        // Extra fire particles for flamethrower (visual flavor)
+        if(w.fireGround)emitP(tipX,tipZ,w.color,2,2);
     }
     // Recoil kick on FP gun
     fpGun.position.z=0.08;
@@ -1839,7 +1952,7 @@ function killEn(e){
 // ===== UPDATE =====
 function update(dt){
     if(state==='menu'){if(clicked){initAudio();startMusic();startGame();}clicked=false;return;}
-    if(state==='dead'){clicked=false;return;}
+    if(state==='dead'||state==='won'){clicked=false;return;}
     clicked=false;
     if(paused)return;
     if(hitPause>0){hitPause-=dt;renderer.render(scene,camera);return;}
@@ -2186,6 +2299,30 @@ function update(dt){
         }
     }
 
+    // Fire patches (from flamethrower) — persistent ground fire that burns enemies
+    for(const fp of firePatches){
+        if(!fp.alive)continue;
+        fp.life-=dt;fp.t+=dt*6;
+        if(fp.life<=0){fp.alive=false;scene.remove(fp.mesh);continue;}
+        const pulse=0.85+Math.sin(fp.t)*0.15;
+        fp.mesh.scale.set(pulse*0.9,1,pulse*0.9);
+        if(fp.mesh.material)fp.mesh.material.opacity=Math.min(0.75,fp.life/2.5)*0.75;
+        fp.mesh.rotation.y+=dt*1.5;
+        // Damage any enemies overlapping
+        for(const en of enemies){
+            if(!en.alive||en.spawning)continue;
+            if(Math.hypot(en.x-fp.x,en.z-fp.z)<en.r+fp.r){
+                en.hp-=fp.dmgPerSec*dt;en.hitT=0.06;
+                if(en.hp<=0)killEn(en);
+            }
+        }
+        // Hurt player too if standing in fire (balance: 5 dmg/sec)
+        if(pl.inv<=0&&Math.hypot(pl.x-fp.x,pl.z-fp.z)<pl.r+fp.r){
+            pl.hp-=5*dt;pl.hurtT=0.08;if(pl.hp<=0)die();
+        }
+    }
+    for(let i=firePatches.length-1;i>=0;i--)if(!firePatches[i].alive)firePatches.splice(i,1);
+
     // Laser beams cleanup - return materials to pool (geometry is shared, never disposed)
     for(let i=laserBeams.length-1;i>=0;i--){
         laserBeams[i].life-=dt;
@@ -2227,7 +2364,14 @@ function update(dt){
 
     // Cleanup - in-place removal to avoid GC
     for(let i=enemies.length-1;i>=0;i--)if(!enemies[i].alive)enemies.splice(i,1);
-    for(let i=bullets.length-1;i>=0;i--)if(!bullets[i].alive)bullets.splice(i,1);
+    for(let i=bullets.length-1;i>=0;i--){
+        const b=bullets[i];
+        if(!b.alive){
+            // Flamethrower bullets leave a fire patch where they ended
+            if(b.fireGround&&!b._firedPatch){mkFirePatch(b.x,b.z);b._firedPatch=true;}
+            bullets.splice(i,1);
+        }
+    }
     for(let i=particles.length-1;i>=0;i--)if(!particles[i].alive)particles.splice(i,1);
     for(let i=crates.length-1;i>=0;i--)if(!crates[i].alive)crates.splice(i,1);
     for(let i=pickups.length-1;i>=0;i--)if(!pickups[i].alive)pickups.splice(i,1);
@@ -2292,7 +2436,7 @@ function updateHUD(){
     else if(reloading)$dhAmmo.textContent='RLD';
     else $dhAmmo.textContent=ammo[pl.wep];
     // Weapons
-    const wN={1:'PIS',2:'SG',3:'CG',4:'RKT',5:'P-LAS',6:'BML',7:'MLT',8:'LAS',9:'MB'};
+    const wN={1:'PIS',2:'SG',3:'CG',4:'RKT',5:'P-LAS',6:'DSG',7:'FLM',8:'R-LAS',9:'NUKE'};
     for(let i=1;i<=WC;i++){
         $w[i].textContent=i;
         if(!unlockedWeapons[i]){$w[i].className='dwep locked';}
