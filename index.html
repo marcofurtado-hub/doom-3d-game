@@ -273,20 +273,15 @@ scene.add(hemiLight);
 // Stub variables (some older code paths may reference them, effect-free)
 const ambLight={intensity:0}, dirLight={intensity:0,position:{set:()=>{}}};
 
-// Red point light for doom atmosphere
-const redLight = new THREE.PointLight(0xff4422, 1.0, 80);
-redLight.position.set(0, 4.2, 0);
-scene.add(redLight);
-
-// Player glow
-const plLight = new THREE.PointLight(0x28882a, 0.4, 8);
-plLight.position.set(0, 2, 0);
-scene.add(plLight);
-
-// Muzzle flash light
-const muzzleLight = new THREE.PointLight(0xe8c020, 0, 10);
-muzzleLight.position.set(0, 1, 0);
-scene.add(muzzleLight);
+// Point lights removed — each one multiplied fragment shader cost by an extra
+// light evaluation. HemisphereLight alone handles atmosphere now.
+// Stub objects keep legacy code working (intensity/position/color setters no-op).
+const _lightStub={
+    color:{setHex:()=>{}},
+    intensity:0,
+    position:{set:()=>{}}
+};
+const redLight=_lightStub, plLight=_lightStub, muzzleLight=_lightStub;
 
 // No flashlight - standard top-down lighting
 function updateFlashlight(){} // no-op
@@ -389,12 +384,8 @@ const _blobTex=(()=>{
 const _blobGeo=new THREE.PlaneGeometry(1,1);
 const _blobMat=new THREE.MeshBasicMaterial({map:_blobTex,transparent:true,depthWrite:false,opacity:0.55});
 function mkBlobShadow(radius){
-    const m=new THREE.Mesh(_blobGeo,_blobMat); // shared geo/material — trivial per-entity cost
-    m.scale.set(radius*2.2,radius*2.2,1);
-    m.rotation.x=-Math.PI/2;
-    m.position.y=0.03;
-    m.userData.isBlob=true;
-    return m;
+    // Disabled — was adding transparent draws per entity. Return empty group.
+    return new THREE.Group();
 }
 
 // Global texture override used by mkBoxMesh during entity construction.
