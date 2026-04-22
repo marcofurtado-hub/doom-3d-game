@@ -266,18 +266,12 @@ addEventListener('resize', ()=>{
 });
 
 // Lights - normal mode
-// Hemisphere light: sky color from above, warm ground bounce from below.
-// Cheap way to get directional gradient shading without lighting math.
-const hemiLight = new THREE.HemisphereLight(0xffd8a0, 0x1a0812, 1.9);
+// ONE light total — HemisphereLight = ambient + sky/ground gradient in one go.
+// Phong/Lambert shader iterates over lights; keeping it at 1 is fastest.
+const hemiLight = new THREE.HemisphereLight(0xffe8c0, 0x201420, 2.3);
 scene.add(hemiLight);
-// Soft ambient floor for self-lighting of dark corners
-const ambLight = new THREE.AmbientLight(0x403040, 0.7);
-scene.add(ambLight);
-// Directional for side-lighting (no shadow casting — just shading)
-const dirLight = new THREE.DirectionalLight(0xfff0e0, 1.1);
-dirLight.position.set(10, 30, 10);
-dirLight.castShadow = false;
-scene.add(dirLight);
+// Stub variables (some older code paths may reference them, effect-free)
+const ambLight={intensity:0}, dirLight={intensity:0,position:{set:()=>{}}};
 
 // Red point light for doom atmosphere
 const redLight = new THREE.PointLight(0xff4422, 1.0, 80);
@@ -424,10 +418,9 @@ ceiling.position.y = WALL_H;
 ceiling.castShadow = false; ceiling.receiveShadow = false;
 scene.add(ceiling);
 
-// Walls — single shared material, outerWallTex's repeat tiles across
-// (some minor stretch on thin faces but only 1 material total = fast)
+// Walls — single shared Lambert material (cheaper fragment shader than Phong)
 outerWallTex.repeat.set(AW/TILE_WORLD,WALL_H/TILE_WORLD);
-const wallMat=new THREE.MeshPhongMaterial({map:outerWallTex,color:0xffffff,emissive:0x1a0808});
+const wallMat=new THREE.MeshLambertMaterial({map:outerWallTex,color:0xffffff,emissive:0x1a0808});
 function mkWall(w,h,d,x,y,z){
     const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),wallMat);
     m.position.set(x,y,z);scene.add(m);return m;
@@ -473,9 +466,9 @@ const MAZE_LAYOUTS=[
         {x:21,z:0,w:2,d:2},  // pillar far corner
     ],
 ];
-// One shared material for all inner walls
+// One shared Lambert material for all inner walls
 innerWallTex.repeat.set(3,WALL_H/TILE_WORLD);
-const innerWallMat=new THREE.MeshPhongMaterial({map:innerWallTex,color:0xffffff,emissive:0x1a0808});
+const innerWallMat=new THREE.MeshLambertMaterial({map:innerWallTex,color:0xffffff,emissive:0x1a0808});
 function genMaze3D(){
     innerWallMeshes.forEach(m=>scene.remove(m));
     innerWallMeshes=[];innerWalls=[];
@@ -903,8 +896,10 @@ const _particleGeo=new THREE.BoxGeometry(1,1,1);
 
 function mkBoxMesh(w,h,d,color,emissive=0x000000){
     const geo=new THREE.BoxGeometry(w,h,d);
-    const mat=new THREE.MeshPhongMaterial({color,emissive});
-    const m=new THREE.Mesh(geo,mat);m.castShadow=true;m.receiveShadow=true;return m;
+    // MeshLambertMaterial is ~30% cheaper than Phong (no specular). Emissive
+    // still supported via emissive property. Good enough for chunky voxel look.
+    const mat=new THREE.MeshLambertMaterial({color,emissive});
+    const m=new THREE.Mesh(geo,mat);return m;
 }
 function mkSphereMesh(r,color){
     const k='smat_'+color;
@@ -914,9 +909,9 @@ function mkSphereMesh(r,color){
     return m;
 }
 
-// Particle pool to reuse meshes
+// Particle pool to reuse meshes (lighter cap on mobile)
 const _particlePool=[];
-const MAX_PARTICLES=120;
+const MAX_PARTICLES=('ontouchstart' in window)?60:120;
 function getPooledParticleMesh(sz,color){
     if(_particlePool.length>0){
         const m=_particlePool.pop();
@@ -1909,7 +1904,7 @@ function update(dt){
                 const spd=Math.hypot(b.vx,b.vz);
                 b.vx=Math.cos(newA)*spd;
                 b.vz=Math.sin(newA)*spd;
-                emitP(b.x,b.z,b.color,1,0.8);
+                // no per-frame particles — too costly
             }
         }
         b.x+=b.vx*dt;b.z+=b.vz*dt;b.y+=(b.vy||0)*dt;b.life-=dt;
@@ -2284,7 +2279,9 @@ let lastT=0;
 function loop(t){
     let dt=(t-lastT)/1000;lastT=t;dt=Math.min(dt,0.05);
     adaptQuality(t);
-    update(dt);
+    // Wrap update in try/catch: if ANY logic throws (boss state bug, NaN
+    // propagation, etc), game keeps running instead of freezing.
+    try{update(dt);}catch(err){console.error('update error:',err);}
 
     // FPS camera at eye level with bob + shake + yaw/pitch look
     const px=state==='play'?pl.x:0,pz=state==='play'?pl.z:0;
