@@ -382,51 +382,74 @@ const ceilTex=mkPixTex(64,paintCeiling,AW/5,AH/5);
 
 // Entity/weapon textures — organic flesh, brushed metal, wood grain, blob shadow
 function paintFlesh(ctx,s){
+    // Higher contrast base noise
     for(let y=0;y<s;y++)for(let x=0;x<s;x++){
-        const n=(Math.random()-0.5)*70;const v=Math.max(0,Math.min(255,128+n))|0;
+        const n=(Math.random()-0.5)*130;
+        const v=Math.max(30,Math.min(240,140+n))|0;
         ctx.fillStyle=`rgb(${v},${v},${v})`;ctx.fillRect(x,y,1,1);
     }
-    // pores/scars
-    for(let i=0;i<20;i++){
-        ctx.fillStyle=`rgba(40,40,40,${0.15+Math.random()*0.35})`;
+    // dark pores
+    for(let i=0;i<35;i++){
+        ctx.fillStyle=`rgba(20,15,15,${0.4+Math.random()*0.4})`;
         const sz=1+(Math.random()*3|0);
         ctx.fillRect(Math.random()*s|0,Math.random()*s|0,sz,sz);
     }
-    // dark vein streaks
-    for(let i=0;i<5;i++){
-        ctx.strokeStyle='rgba(20,20,20,0.5)';ctx.lineWidth=1;
-        ctx.beginPath();ctx.moveTo(Math.random()*s,Math.random()*s);
-        ctx.lineTo(Math.random()*s,Math.random()*s);ctx.stroke();
+    // bright bumps
+    for(let i=0;i<18;i++){
+        ctx.fillStyle=`rgba(240,230,220,${0.2+Math.random()*0.3})`;
+        ctx.fillRect(Math.random()*s|0,Math.random()*s|0,1,1);
+    }
+    // vein streaks
+    for(let i=0;i<6;i++){
+        ctx.strokeStyle='rgba(10,10,10,0.65)';ctx.lineWidth=1;
+        ctx.beginPath();
+        ctx.moveTo(Math.random()*s,Math.random()*s);
+        ctx.lineTo(Math.random()*s,Math.random()*s);
+        ctx.stroke();
     }
 }
 function paintMetal(ctx,s){
-    // horizontal brush
+    // horizontal brush — strong contrast
     for(let y=0;y<s;y++){
-        const v=130+(Math.random()-0.5)*50|0;
+        const v=140+(Math.random()-0.5)*90|0;
         ctx.fillStyle=`rgb(${v},${v},${v})`;ctx.fillRect(0,y,s,1);
     }
-    // scratches
-    for(let i=0;i<6;i++){
-        ctx.fillStyle='rgba(40,40,40,0.6)';
+    // dark scratches
+    for(let i=0;i<10;i++){
+        ctx.fillStyle=`rgba(20,20,20,${0.55+Math.random()*0.35})`;
         const y=Math.random()*s|0;
-        ctx.fillRect(Math.random()*s|0,y,6+(Math.random()*18|0),1);
+        ctx.fillRect(Math.random()*s|0,y,6+(Math.random()*20|0),1);
     }
-    // rivets
-    ctx.fillStyle='rgba(20,20,20,0.85)';
-    for(let i=0;i<4;i++){
-        ctx.fillRect(((Math.random()*s|0)>>2)<<2,((Math.random()*s|0)>>2)<<2,2,2);
+    // bright highlights
+    for(let i=0;i<5;i++){
+        ctx.fillStyle='rgba(255,255,240,0.35)';
+        const y=Math.random()*s|0;
+        ctx.fillRect(Math.random()*s|0,y,4+(Math.random()*10|0),1);
+    }
+    // rivets (dark squares)
+    ctx.fillStyle='rgba(10,10,10,1)';
+    for(let i=0;i<5;i++){
+        const x=((Math.random()*s|0)>>1)<<1, y=((Math.random()*s|0)>>1)<<1;
+        ctx.fillRect(x,y,2,2);
     }
 }
 function paintWood(ctx,s){
-    for(let y=0;y<s;y++){
-        const v=90+(Math.random()-0.5)*30;
-        ctx.fillStyle=`rgb(${v*1.5|0},${v*0.9|0},${v*0.5|0})`;
+    // base wood tone
+    for(let y=0;y<s;y++)for(let x=0;x<s;x++){
+        const n=(Math.random()-0.5)*40;
+        const base=90+n;
+        ctx.fillStyle=`rgb(${base*1.6|0},${base*0.9|0},${base*0.45|0})`;
+        ctx.fillRect(x,y,1,1);
+    }
+    // horizontal grain lines (dark)
+    for(let y=0;y<s;y+=1+(Math.random()*3|0)){
+        ctx.fillStyle=`rgba(40,20,5,${0.25+Math.random()*0.35})`;
         ctx.fillRect(0,y,s,1);
     }
-    // grain
-    for(let y=0;y<s;y+=2+(Math.random()*4|0)){
-        ctx.fillStyle=`rgba(40,22,8,${0.3+Math.random()*0.3})`;
-        ctx.fillRect(0,y,s,1);
+    // knots
+    for(let i=0;i<3;i++){
+        ctx.fillStyle='rgba(25,12,3,0.7)';
+        ctx.fillRect(Math.random()*s|0,Math.random()*s|0,3,2);
     }
 }
 const _fleshTex=mkPixTex(32,paintFlesh,1,1);
@@ -458,17 +481,24 @@ function mkBlobShadow(radius){
 }
 
 // Apply a texture to main body parts of an entity mesh (skip glowing parts).
-// A part is considered "glowing" if its emissive is close to its base color.
+// Creates new MeshPhongMaterial with map built-in — more reliable than
+// mutating `map` + `needsUpdate` after shader compilation.
 function applyEntityTex(group,tex){
     group.traverse(c=>{
         if(!c.isMesh||!c.material||c.userData.isBlob)return;
         const e=c.material.emissive,col=c.material.color;
-        if(e&&col){
+        if(!col)return;
+        if(e){
             const d=Math.abs(e.r-col.r)+Math.abs(e.g-col.g)+Math.abs(e.b-col.b);
-            if(d<0.35)return; // glowing — skip
+            if(d<0.35)return; // glowing part — skip
         }
-        c.material.map=tex;
-        c.material.needsUpdate=true;
+        const oldMat=c.material;
+        c.material=new THREE.MeshPhongMaterial({
+            color:col.getHex(),
+            emissive:e?e.getHex():0,
+            map:tex
+        });
+        oldMat.dispose();
     });
 }
 
