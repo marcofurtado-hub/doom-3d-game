@@ -60,7 +60,11 @@ canvas{display:block}
 #game-over p{color:#b8a898;font-size:16px;margin-top:8px}
 #game-over .go{color:#e03818;font-size:18px;margin-top:16px;animation:pulse 1.5s infinite;cursor:pointer;pointer-events:auto;padding:12px 28px;border:2px solid #e03818;border-radius:4px;touch-action:manipulation;user-select:none;-webkit-tap-highlight-color:transparent}
 #game-over .go:active{background:rgba(224,56,24,0.25)}
-#go-ranking{margin-top:12px}
+#go-ranking{margin-top:12px;width:100%;max-width:420px}
+.lb-list{max-height:260px;overflow-y:auto;border:1px solid rgba(224,56,24,0.3);padding:4px 8px;background:rgba(20,10,12,0.55)}
+.lb-list::-webkit-scrollbar{width:6px}
+.lb-list::-webkit-scrollbar-track{background:#200}
+.lb-list::-webkit-scrollbar-thumb{background:#e03818}
 #go-name{margin-top:12px;pointer-events:auto}
 #go-name input{background:#1a0e10;border:2px solid #e03818;color:#e8c020;font-family:monospace;font-size:20px;padding:8px 14px;text-align:center;outline:none;width:220px;touch-action:manipulation;pointer-events:auto}
 #go-save{cursor:pointer;pointer-events:auto;color:#e8c020;font-size:16px;margin-top:10px;padding:10px 24px;border:2px solid #e8c020;border-radius:4px;display:inline-block;touch-action:manipulation;user-select:none;-webkit-tap-highlight-color:transparent}
@@ -1406,18 +1410,68 @@ function dst(a,b){return Math.hypot(a.x-b.x,a.z-b.z);}
 
 // ===== GAME FLOW =====
 function fmtTime(s){const m=Math.floor(s/60);const ss=Math.floor(s%60);return m+':'+(ss<10?'0':'')+ss;}
+
+// ===== GLOBAL LEADERBOARD (dreamlo.com) =====
+// Setup (1 minuto, sem conta):
+//   1. Abre https://dreamlo.com/addboard
+//   2. Preenche nome da board (ex: "doomzinho_fps")
+//   3. Copia os 2 codes que aparecem:
+//        - Private code → LB_PRIVATE (pra salvar scores)
+//        - Public code  → LB_PUBLIC  (pra ler leaderboard)
+//   4. Substitui as duas strings abaixo e faz push de novo
+const LB_PRIVATE='PUT_PRIVATE_CODE_HERE';
+const LB_PUBLIC='PUT_PUBLIC_CODE_HERE';
+const LB_BASE='https://www.dreamlo.com/lb/';
+const _lbConfigured=()=>!LB_PRIVATE.startsWith('PUT_')&&!LB_PUBLIC.startsWith('PUT_');
+
+async function lbSubmit(name,sc,wave,time){
+    if(!_lbConfigured())return;
+    const n=(name||'PLAYER').replace(/[^A-Za-z0-9_-]/g,'').slice(0,12)||'PLAYER';
+    const url=LB_BASE+LB_PRIVATE+'/add/'+encodeURIComponent(n)+'/'+Math.floor(sc)+'/'+Math.floor(time)+'/'+wave;
+    try{await fetch(url);}catch(e){console.warn('lb submit failed',e);}
+}
+async function lbFetch(n=100){
+    if(!_lbConfigured())return null;
+    try{
+        const res=await fetch(LB_BASE+LB_PUBLIC+'/json/'+n);
+        const j=await res.json();
+        let e=j&&j.dreamlo&&j.dreamlo.leaderboard&&j.dreamlo.leaderboard.entry;
+        if(!e)return [];
+        if(!Array.isArray(e))e=[e];
+        return e.map(x=>({name:x.name,score:+x.score||0,time:+x.seconds||0,wave:+x.text||0}));
+    }catch(e){console.warn('lb fetch failed',e);return null;}
+}
+
 function saveRanking(name,sc,wave,time){
+    // Sempre salva local (fallback se a internet cair)
     rankings.push({name:name||'PLAYER',score:sc,wave,time:Math.floor(time)});
     rankings.sort((a,b)=>b.score-a.score);rankings=rankings.slice(0,10);
     localStorage.setItem('doom3dRank',JSON.stringify(rankings));
 }
-function showRanking(){
-    let h='<div style="color:#888;font-size:13px;margin-bottom:4px">TOP 10</div><table style="color:#b8a898;font-size:12px;border-collapse:collapse;margin:0 auto">';
-    h+='<tr style="color:#e8c020"><td style="padding:1px 6px">#</td><td>NAME</td><td>SCORE</td><td>WAVE</td><td>TIME</td></tr>';
-    rankings.forEach((r,i)=>{h+=`<tr><td style="padding:1px 6px">${i+1}</td><td>${r.name}</td><td>${r.score}</td><td>${r.wave}</td><td>${fmtTime(r.time)}</td></tr>`;});
-    h+='</table>';$goRank.innerHTML=h;
+async function showRanking(){
+    const loading='<div style="color:#888;font-size:13px">carregando ranking global...</div>';
+    $goRank.innerHTML=loading;
+    const global=_lbConfigured()?await lbFetch(100):null;
+    const list=(global&&global.length>0)?global:rankings;
+    const title=(global&&global.length>0)?`TOP ${list.length} MUNDIAL`:'TOP 10 LOCAL';
+    let h='<div style="color:#e03818;font-size:14px;font-weight:bold;margin-bottom:6px;letter-spacing:2px">'+title+'</div>';
+    h+='<div class="lb-list"><table style="color:#b8a898;font-size:12px;border-collapse:collapse;margin:0 auto;width:100%">';
+    h+='<tr style="color:#e8c020;position:sticky;top:0;background:#1a0e10"><td style="padding:3px 6px">#</td><td>NAME</td><td>SCORE</td><td>W</td><td>TIME</td></tr>';
+    list.forEach((r,i)=>{
+        const hl=i<3?` style="color:#e8c020"`:'';
+        h+=`<tr${hl}><td style="padding:1px 6px">${i+1}</td><td>${r.name}</td><td>${r.score}</td><td>${r.wave}</td><td>${fmtTime(r.time)}</td></tr>`;
+    });
+    h+='</table></div>';
+    $goRank.innerHTML=h;
 }
-$('go-save').onclick=()=>{const n=($goInput.value||'PLAYER').toUpperCase().slice(0,10);saveRanking(n,score,waveNum,gameTime);$goName.style.display='none';showRanking();};
+$('go-save').onclick=async()=>{
+    const n=($goInput.value||'PLAYER').toUpperCase().slice(0,10);
+    $goName.style.display='none';
+    saveRanking(n,score,waveNum,gameTime);
+    $goRank.innerHTML='<div style="color:#e8c020;font-size:13px">enviando score...</div>';
+    await lbSubmit(n,score,waveNum,gameTime);
+    showRanking();
+};
 $('go-restart').onclick=()=>{if(state==='dead')startGame();};
 $('vol-down').onclick=()=>{volume=Math.max(0,volume-10);$('vol-val').textContent=volume+'%';if(mvol)mvol.gain.value=volume/200;};
 $('vol-up').onclick=()=>{volume=Math.min(100,volume+10);$('vol-val').textContent=volume+'%';if(mvol)mvol.gain.value=volume/200;};
