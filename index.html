@@ -424,17 +424,12 @@ ceiling.position.y = WALL_H;
 ceiling.castShadow = false; ceiling.receiveShadow = false;
 scene.add(ceiling);
 
-// Walls — clone texture per wall so each gets its own .repeat matching its
-// front-face dimensions. Keeps tiles 1:1 square on the wall we actually see.
-function mkWallMat(faceW,faceH,tex){
-    const t=tex.clone();t.needsUpdate=true;
-    t.repeat.set(Math.max(0.5,faceW/TILE_WORLD),Math.max(0.5,faceH/TILE_WORLD));
-    return new THREE.MeshPhongMaterial({map:t,color:0xffffff,emissive:0x1a0808});
-}
+// Walls — single shared material, outerWallTex's repeat tiles across
+// (some minor stretch on thin faces but only 1 material total = fast)
+outerWallTex.repeat.set(AW/TILE_WORLD,WALL_H/TILE_WORLD);
+const wallMat=new THREE.MeshPhongMaterial({map:outerWallTex,color:0xffffff,emissive:0x1a0808});
 function mkWall(w,h,d,x,y,z){
-    const faceW=Math.max(w,d); // the "long" side tiles horizontally
-    const mat=mkWallMat(faceW,h,outerWallTex);
-    const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat);
+    const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),wallMat);
     m.position.set(x,y,z);scene.add(m);return m;
 }
 mkWall(AW,WALL_H,WALL_T, 0,WALL_H/2,-AH/2); // north
@@ -478,12 +473,11 @@ const MAZE_LAYOUTS=[
         {x:21,z:0,w:2,d:2},  // pillar far corner
     ],
 ];
+// One shared material for all inner walls
+innerWallTex.repeat.set(3,WALL_H/TILE_WORLD);
+const innerWallMat=new THREE.MeshPhongMaterial({map:innerWallTex,color:0xffffff,emissive:0x1a0808});
 function genMaze3D(){
-    // Dispose old materials + textures to avoid GPU leaks on wave restart
-    innerWallMeshes.forEach(m=>{
-        scene.remove(m);
-        if(m.material){if(m.material.map)m.material.map.dispose();m.material.dispose();}
-    });
+    innerWallMeshes.forEach(m=>scene.remove(m));
     innerWallMeshes=[];innerWalls=[];
     const layout=MAZE_LAYOUTS[Math.floor(Math.random()*MAZE_LAYOUTS.length)];
     for(const def of layout){
@@ -497,9 +491,7 @@ function genMaze3D(){
             if(Math.abs(pos.x)+def.w/2>AW/2-2)continue;
             if(Math.abs(pos.z)+def.d/2>AH/2-2)continue;
             innerWalls.push({x:pos.x,z:pos.z,w:def.w,d:def.d});
-            const faceW=Math.max(def.w,def.d);
-            const mat=mkWallMat(faceW,WALL_H,innerWallTex);
-            const m=new THREE.Mesh(new THREE.BoxGeometry(def.w,WALL_H,def.d),mat);
+            const m=new THREE.Mesh(new THREE.BoxGeometry(def.w,WALL_H,def.d),innerWallMat);
             m.position.set(pos.x,WALL_H/2,pos.z);
             scene.add(m);innerWallMeshes.push(m);
         }
@@ -911,7 +903,7 @@ const _particleGeo=new THREE.BoxGeometry(1,1,1);
 
 function mkBoxMesh(w,h,d,color,emissive=0x000000){
     const geo=new THREE.BoxGeometry(w,h,d);
-    const mat=new THREE.MeshPhongMaterial({color,emissive,map:_currentTex});
+    const mat=new THREE.MeshPhongMaterial({color,emissive});
     const m=new THREE.Mesh(geo,mat);m.castShadow=true;m.receiveShadow=true;return m;
 }
 function mkSphereMesh(r,color){
@@ -1011,8 +1003,6 @@ function buildFPWeapon(id){
         if(c.geometry)c.geometry.dispose();
         if(c.material)c.material.dispose();
     }
-    // Apply wood grain to shotgun stock, metal to everything else (baked into mkBoxMesh)
-    _currentTex = id===2 ? _woodTex : _metalTex;
     const X=0.26,Y=-0.22;
     if(id===1){ // PISTOL - small handgun
         _fpPart(0.08,0.08,0.35,0x555555,X,Y,-0.52,0x111111);
@@ -1087,7 +1077,6 @@ function buildFPWeapon(id){
         _fpPart(0.05,0.07,0.04,0xe8c020,X,Y+0.18,-0.55,0xe8c020);
         _fpPart(0.13,0.2,0.16,0x1a1a1a,X,Y-0.19,-0.28);
     }
-    _currentTex=null; // reset for subsequent non-entity mesh creations
     fpGunCurrent=id;
 }
 buildFPWeapon(1);
@@ -1095,7 +1084,6 @@ buildFPWeapon(1);
 // ===== ENTITY FACTORIES =====
 function mkEnemy(type,x,z){
     const d=EDEF[type];const hpM=1+(waveNum-1)*0.08;
-    _currentTex=_fleshTex; // all enemies get flesh texture on their parts
     const mesh=new THREE.Group();
     let legL=null,legR=null;
 
@@ -1149,7 +1137,6 @@ function mkEnemy(type,x,z){
         legR=mkBoxMesh(0.2,0.45,0.2,0x2a3a12);legR.position.set(0.12,0.3,0);mesh.add(legR);
     }
 
-    _currentTex=null;
     mesh.position.set(x,0,z);mesh.scale.set(0.01,0.01,0.01);
     mesh.traverse(c=>{if(c.isMesh)c.castShadow=false;});
     mesh.add(mkBlobShadow(d.r*0.95));
@@ -1164,8 +1151,6 @@ function mkEnemy(type,x,z){
 
 function mkBoss(idx,x,z){
     const d=BDEF[idx];const s=d.r*1.8;
-    // CYBERDEMON (idx 2) is metallic, all others get flesh texture
-    _currentTex = idx===2 ? _metalTex : _fleshTex;
     const mesh=new THREE.Group();
     let legL=null,legR=null;
     const darker=(c)=>{const r=(c>>16)&0xff,g=(c>>8)&0xff,b=c&0xff;return ((r*0.6|0)<<16)|((g*0.6|0)<<8)|(b*0.6|0);};
@@ -1321,7 +1306,6 @@ function mkBoss(idx,x,z){
         legR=mkBoxMesh(s*0.25,s*0.5,s*0.25,col2);legR.position.set(s*0.2,s*0.2,0);mesh.add(legR);
     }
 
-    _currentTex=null;
     mesh.position.set(x,0,z);mesh.scale.set(0.01,0.01,0.01);
     mesh.traverse(c=>{if(c.isMesh)c.castShadow=false;});
     mesh.add(mkBlobShadow(d.r*1.25));
@@ -1369,9 +1353,7 @@ function mkCrate(x,z){
     const wi=isWep?unlKeys[Math.floor(Math.random()*unlKeys.length)]:0;
     const color=isWep?0xaa8840:0x308898;
     const g=new THREE.Group();
-    _currentTex=_metalTex;
     const box=mkBoxMesh(0.8,0.8,0.8,color,isWep?0x1a1008:0x081a18);
-    _currentTex=null;
     box.castShadow=false;g.add(box);
     const blob=mkBlobShadow(0.6);blob.position.y=-0.38;g.add(blob);
     g.position.set(x,0,z);g.scale.set(0.01,0.01,0.01);scene.add(g);
