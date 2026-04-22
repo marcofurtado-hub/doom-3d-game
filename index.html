@@ -311,169 +311,92 @@ function hitFlashFX(x, z, color){}
 const AW = 50, AH = 35; // world units
 const WALL_H = 5, WALL_T = 1.5;
 
-// ===== PIXEL-ART PROCEDURAL TEXTURES =====
-// Generated once on a 64px canvas; NearestFilter preserves the pixel look.
-// Total memory ~20KB for all four — basically free.
-function mkPixTex(size, paintFn, rx=1, ry=1){
+// ===== TINY PIXEL TEXTURES =====
+// All textures are 8x8 or 4x4 — dozens of texels total each. Super lightweight.
+// NearestFilter + RepeatWrapping; tile aspect preserved via per-mesh .repeat.
+function mkPixTex(size,paintFn){
     const c=document.createElement('canvas');c.width=c.height=size;
-    const ctx=c.getContext('2d');paintFn(ctx,size);
+    paintFn(c.getContext('2d'),size);
     const t=new THREE.CanvasTexture(c);
     t.magFilter=THREE.NearestFilter;t.minFilter=THREE.NearestFilter;
-    t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(rx,ry);
+    t.wrapS=t.wrapT=THREE.RepeatWrapping;
     return t;
 }
+// 8x8 dark brown stone palette
 function paintFloor(ctx,s){
+    const p=['#3a2e20','#3a2c1e','#382a1c','#352a1e','#40332a','#2a1e14'];
     for(let y=0;y<s;y++)for(let x=0;x<s;x++){
-        const n=(Math.random()-0.5)*14;
-        const r=Math.max(0,58+n)|0,g=Math.max(0,42+n)|0,b=Math.max(0,32+n)|0;
-        ctx.fillStyle=`rgb(${r},${g},${b})`;ctx.fillRect(x,y,1,1);
+        ctx.fillStyle=p[Math.random()*p.length|0];ctx.fillRect(x,y,1,1);
     }
-    // Brick offset mortar
-    ctx.fillStyle='rgba(0,0,0,0.55)';
-    for(let y=0;y<s;y+=16)ctx.fillRect(0,y,s,1);
-    for(let y=0;y<s;y+=16){
-        const off=(y/16)%2===0?0:8;
-        for(let x=-off;x<s;x+=16)ctx.fillRect(x,y,1,16);
-    }
-    // Cracks
-    ctx.fillStyle='rgba(0,0,0,0.35)';
-    for(let i=0;i<10;i++)ctx.fillRect(Math.random()*s|0,Math.random()*s|0,2+(Math.random()*3|0),1);
+    ctx.fillStyle='#120a05';ctx.fillRect(0,0,s,1);ctx.fillRect(0,0,1,s);
 }
+// 8x8 red stone bricks
 function paintWall(ctx,s){
+    const p=['#6a2018','#5a1818','#702828','#4a1414','#7a3018','#5a1a1a'];
     for(let y=0;y<s;y++)for(let x=0;x<s;x++){
-        const n=(Math.random()-0.5)*18;
-        const r=Math.max(0,92+n)|0,g=Math.max(0,32+n*0.5)|0,b=Math.max(0,28+n*0.4)|0;
-        ctx.fillStyle=`rgb(${r},${g},${b})`;ctx.fillRect(x,y,1,1);
+        ctx.fillStyle=p[Math.random()*p.length|0];ctx.fillRect(x,y,1,1);
     }
-    // Brick rows
-    ctx.fillStyle='rgba(0,0,0,0.7)';
-    for(let y=0;y<s;y+=16)ctx.fillRect(0,y,s,2);
-    for(let y=0;y<s;y+=16){
-        const off=(y/16)%2===0?0:16;
-        for(let x=-off;x<s;x+=32)ctx.fillRect(x,y,2,16);
-    }
-    // Top highlight
-    ctx.fillStyle='rgba(220,110,80,0.22)';
-    for(let y=2;y<s;y+=16)ctx.fillRect(0,y,s,1);
-    // Dark grime blotches
-    for(let i=0;i<12;i++){
-        ctx.fillStyle=`rgba(0,0,0,${0.2+Math.random()*0.3})`;
-        ctx.fillRect(Math.random()*s|0,Math.random()*s|0,2+(Math.random()*3|0),2+(Math.random()*3|0));
-    }
+    ctx.fillStyle='#150606';ctx.fillRect(0,0,s,1);ctx.fillRect(0,0,1,s);
 }
+// 8x8 very dark metal (ceiling)
 function paintCeiling(ctx,s){
+    const p=['#1a141a','#120a14','#0c060c','#1e181e','#08040a'];
     for(let y=0;y<s;y++)for(let x=0;x<s;x++){
-        const n=(Math.random()-0.5)*10;
-        const r=Math.max(0,12+n)|0,g=Math.max(0,9+n*0.5)|0,b=Math.max(0,14+n)|0;
-        ctx.fillStyle=`rgb(${r},${g},${b})`;ctx.fillRect(x,y,1,1);
+        ctx.fillStyle=p[Math.random()*p.length|0];ctx.fillRect(x,y,1,1);
     }
-    // Metal panel lines
-    ctx.fillStyle='rgba(255,230,210,0.05)';
-    for(let y=0;y<s;y+=16)ctx.fillRect(0,y,s,1);
-    for(let x=0;x<s;x+=16)ctx.fillRect(x,0,1,s);
-    // Rivets at corners
-    ctx.fillStyle='rgba(60,40,40,0.9)';
-    for(let y=2;y<s;y+=16)for(let x=2;x<s;x+=16)ctx.fillRect(x,y,2,2);
+    ctx.fillStyle='#000';ctx.fillRect(0,0,s,1);ctx.fillRect(0,0,1,s);
 }
-const floorTex=mkPixTex(64,paintFloor,AW/4,AH/4);
-const outerWallTex=mkPixTex(64,paintWall,7,1.4);
-const innerWallTex=mkPixTex(64,paintWall,2,1.2);
-const ceilTex=mkPixTex(64,paintCeiling,AW/5,AH/5);
-
-// Entity/weapon textures — organic flesh, brushed metal, wood grain, blob shadow
+// 4x4 flesh noise — gray values that multiply with any base color
 function paintFlesh(ctx,s){
-    // Higher contrast base noise
+    const p=['#505050','#707070','#a0a0a0','#c0c0c0','#808080','#606060','#909090'];
     for(let y=0;y<s;y++)for(let x=0;x<s;x++){
-        const n=(Math.random()-0.5)*130;
-        const v=Math.max(30,Math.min(240,140+n))|0;
-        ctx.fillStyle=`rgb(${v},${v},${v})`;ctx.fillRect(x,y,1,1);
-    }
-    // dark pores
-    for(let i=0;i<35;i++){
-        ctx.fillStyle=`rgba(20,15,15,${0.4+Math.random()*0.4})`;
-        const sz=1+(Math.random()*3|0);
-        ctx.fillRect(Math.random()*s|0,Math.random()*s|0,sz,sz);
-    }
-    // bright bumps
-    for(let i=0;i<18;i++){
-        ctx.fillStyle=`rgba(240,230,220,${0.2+Math.random()*0.3})`;
-        ctx.fillRect(Math.random()*s|0,Math.random()*s|0,1,1);
-    }
-    // vein streaks
-    for(let i=0;i<6;i++){
-        ctx.strokeStyle='rgba(10,10,10,0.65)';ctx.lineWidth=1;
-        ctx.beginPath();
-        ctx.moveTo(Math.random()*s,Math.random()*s);
-        ctx.lineTo(Math.random()*s,Math.random()*s);
-        ctx.stroke();
+        ctx.fillStyle=p[Math.random()*p.length|0];ctx.fillRect(x,y,1,1);
     }
 }
+// 4x4 brushed metal (horizontal stripes)
 function paintMetal(ctx,s){
-    // horizontal brush — strong contrast
+    const p=['#606060','#909090','#b0b0b0','#707070','#a0a0a0'];
     for(let y=0;y<s;y++){
-        const v=140+(Math.random()-0.5)*90|0;
-        ctx.fillStyle=`rgb(${v},${v},${v})`;ctx.fillRect(0,y,s,1);
-    }
-    // dark scratches
-    for(let i=0;i<10;i++){
-        ctx.fillStyle=`rgba(20,20,20,${0.55+Math.random()*0.35})`;
-        const y=Math.random()*s|0;
-        ctx.fillRect(Math.random()*s|0,y,6+(Math.random()*20|0),1);
-    }
-    // bright highlights
-    for(let i=0;i<5;i++){
-        ctx.fillStyle='rgba(255,255,240,0.35)';
-        const y=Math.random()*s|0;
-        ctx.fillRect(Math.random()*s|0,y,4+(Math.random()*10|0),1);
-    }
-    // rivets (dark squares)
-    ctx.fillStyle='rgba(10,10,10,1)';
-    for(let i=0;i<5;i++){
-        const x=((Math.random()*s|0)>>1)<<1, y=((Math.random()*s|0)>>1)<<1;
-        ctx.fillRect(x,y,2,2);
+        ctx.fillStyle=p[Math.random()*p.length|0];ctx.fillRect(0,y,s,1);
     }
 }
+// 4x4 wood grain
 function paintWood(ctx,s){
-    // base wood tone
-    for(let y=0;y<s;y++)for(let x=0;x<s;x++){
-        const n=(Math.random()-0.5)*40;
-        const base=90+n;
-        ctx.fillStyle=`rgb(${base*1.6|0},${base*0.9|0},${base*0.45|0})`;
-        ctx.fillRect(x,y,1,1);
-    }
-    // horizontal grain lines (dark)
-    for(let y=0;y<s;y+=1+(Math.random()*3|0)){
-        ctx.fillStyle=`rgba(40,20,5,${0.25+Math.random()*0.35})`;
-        ctx.fillRect(0,y,s,1);
-    }
-    // knots
-    for(let i=0;i<3;i++){
-        ctx.fillStyle='rgba(25,12,3,0.7)';
-        ctx.fillRect(Math.random()*s|0,Math.random()*s|0,3,2);
+    const p=['#785028','#5a3818','#8c5828','#4b2e10'];
+    for(let y=0;y<s;y++){
+        ctx.fillStyle=p[Math.random()*p.length|0];ctx.fillRect(0,y,s,1);
     }
 }
-const _fleshTex=mkPixTex(32,paintFlesh,1,1);
-const _metalTex=mkPixTex(32,paintMetal,1,1);
-const _woodTex=mkPixTex(32,paintWood,1,1);
+const floorTex=mkPixTex(8,paintFloor);
+const outerWallTex=mkPixTex(8,paintWall);
+const innerWallTex=mkPixTex(8,paintWall);
+const ceilTex=mkPixTex(8,paintCeiling);
+const _fleshTex=mkPixTex(4,paintFlesh);
+const _metalTex=mkPixTex(4,paintMetal);
+const _woodTex=mkPixTex(4,paintWood);
 
-// Fake AO: radial gradient "blob shadow" — one textured plane under each entity.
-// Way cheaper than shadow mapping; gives solid contact feel.
+// Keep world-tile size in world units so textures don't stretch per face.
+const TILE_WORLD=2; // one texture tile covers 2 world units on walls/floor/ceiling
+floorTex.repeat.set(AW/TILE_WORLD,AH/TILE_WORLD);
+ceilTex.repeat.set(AW/TILE_WORLD,AH/TILE_WORLD);
+
+// Blob shadow — shared geo + material across every entity (1 material total).
 const _blobTex=(()=>{
-    const c=document.createElement('canvas');c.width=c.height=64;
+    const c=document.createElement('canvas');c.width=c.height=16;
     const ctx=c.getContext('2d');
-    const g=ctx.createRadialGradient(32,32,2,32,32,30);
-    g.addColorStop(0,'rgba(0,0,0,0.78)');
-    g.addColorStop(0.6,'rgba(0,0,0,0.35)');
+    const g=ctx.createRadialGradient(8,8,0.5,8,8,8);
+    g.addColorStop(0,'rgba(0,0,0,0.75)');
     g.addColorStop(1,'rgba(0,0,0,0)');
-    ctx.fillStyle=g;ctx.fillRect(0,0,64,64);
+    ctx.fillStyle=g;ctx.fillRect(0,0,16,16);
     const t=new THREE.CanvasTexture(c);
     t.magFilter=THREE.LinearFilter;t.minFilter=THREE.LinearFilter;
     return t;
 })();
+const _blobGeo=new THREE.PlaneGeometry(1,1);
+const _blobMat=new THREE.MeshBasicMaterial({map:_blobTex,transparent:true,depthWrite:false,opacity:0.55});
 function mkBlobShadow(radius){
-    const geo=new THREE.PlaneGeometry(radius*2.2,radius*2.2);
-    const mat=new THREE.MeshBasicMaterial({map:_blobTex,transparent:true,depthWrite:false,opacity:0.6});
-    const m=new THREE.Mesh(geo,mat);
+    const m=new THREE.Mesh(_blobGeo,_blobMat); // shared geo/material — trivial per-entity cost
+    m.scale.set(radius*2.2,radius*2.2,1);
     m.rotation.x=-Math.PI/2;
     m.position.y=0.03;
     m.userData.isBlob=true;
@@ -481,10 +404,8 @@ function mkBlobShadow(radius){
 }
 
 // Global texture override used by mkBoxMesh during entity construction.
-// Set before creating an entity's parts, unset after. No material replacement
-// (which was causing crashes) — the texture is baked in at material creation.
 let _currentTex=null;
-function applyEntityTex(){} // no-op kept for back-compat with older call-sites
+function applyEntityTex(){} // no-op (back-compat)
 
 // Floor
 const floorGeo = new THREE.PlaneGeometry(AW, AH, 20, 14);
@@ -503,11 +424,18 @@ ceiling.position.y = WALL_H;
 ceiling.castShadow = false; ceiling.receiveShadow = false;
 scene.add(ceiling);
 
-// Walls
-const wallMat = new THREE.MeshPhongMaterial({map:outerWallTex,color:0xffffff,emissive:0x1a0808});
+// Walls — clone texture per wall so each gets its own .repeat matching its
+// front-face dimensions. Keeps tiles 1:1 square on the wall we actually see.
+function mkWallMat(faceW,faceH,tex){
+    const t=tex.clone();t.needsUpdate=true;
+    t.repeat.set(Math.max(0.5,faceW/TILE_WORLD),Math.max(0.5,faceH/TILE_WORLD));
+    return new THREE.MeshPhongMaterial({map:t,color:0xffffff,emissive:0x1a0808});
+}
 function mkWall(w,h,d,x,y,z){
-    const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d), wallMat);
-    m.position.set(x,y,z);m.castShadow=true;m.receiveShadow=true;scene.add(m);return m;
+    const faceW=Math.max(w,d); // the "long" side tiles horizontally
+    const mat=mkWallMat(faceW,h,outerWallTex);
+    const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat);
+    m.position.set(x,y,z);scene.add(m);return m;
 }
 mkWall(AW,WALL_H,WALL_T, 0,WALL_H/2,-AH/2); // north
 mkWall(AW,WALL_H,WALL_T, 0,WALL_H/2,AH/2);  // south
@@ -551,25 +479,28 @@ const MAZE_LAYOUTS=[
     ],
 ];
 function genMaze3D(){
-    innerWallMeshes.forEach(m=>scene.remove(m));
+    // Dispose old materials + textures to avoid GPU leaks on wave restart
+    innerWallMeshes.forEach(m=>{
+        scene.remove(m);
+        if(m.material){if(m.material.map)m.material.map.dispose();m.material.dispose();}
+    });
     innerWallMeshes=[];innerWalls=[];
     const layout=MAZE_LAYOUTS[Math.floor(Math.random()*MAZE_LAYOUTS.length)];
-    const wallMat2=new THREE.MeshPhongMaterial({map:innerWallTex,color:0xffffff,emissive:0x1a0808});
     for(const def of layout){
-        // Mirror symmetrically (4-way for non-axis, 2-way for axis walls)
         const positions=[];
         positions.push({x:def.x,z:def.z});
         if(def.x!==0)positions.push({x:-def.x,z:def.z});
         if(def.z!==0)positions.push({x:def.x,z:-def.z});
         if(def.x!==0&&def.z!==0)positions.push({x:-def.x,z:-def.z});
         for(const pos of positions){
-            if(Math.abs(pos.x)<3&&Math.abs(pos.z)<3)continue; // keep spawn clear
+            if(Math.abs(pos.x)<3&&Math.abs(pos.z)<3)continue;
             if(Math.abs(pos.x)+def.w/2>AW/2-2)continue;
             if(Math.abs(pos.z)+def.d/2>AH/2-2)continue;
             innerWalls.push({x:pos.x,z:pos.z,w:def.w,d:def.d});
-            const geo=new THREE.BoxGeometry(def.w,WALL_H,def.d);
-            const m=new THREE.Mesh(geo,wallMat2);
-            m.position.set(pos.x,WALL_H/2,pos.z);m.castShadow=true;m.receiveShadow=true;
+            const faceW=Math.max(def.w,def.d);
+            const mat=mkWallMat(faceW,WALL_H,innerWallTex);
+            const m=new THREE.Mesh(new THREE.BoxGeometry(def.w,WALL_H,def.d),mat);
+            m.position.set(pos.x,WALL_H/2,pos.z);
             scene.add(m);innerWallMeshes.push(m);
         }
     }
