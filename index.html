@@ -244,13 +244,14 @@ import * as THREE from 'three';
 const renderer = new THREE.WebGLRenderer({antialias:false, powerPreference:'high-performance'});
 renderer.setSize(innerWidth, innerHeight);
 renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));
-renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFShadowMap;
+// Real shadow mapping disabled — we rely on blob shadows + hemisphere light
+// for a fake-but-cheap AO feel. Big perf win.
+renderer.shadowMap.enabled = false;
 renderer.setClearColor(0x000000);
 document.body.prepend(renderer.domElement);
 
 const scene = new THREE.Scene();
-scene.fog = new THREE.Fog(0x000000, 9, 30); // smooth black fade (DoF-like)
+scene.fog = new THREE.Fog(0x000000, 7, 24); // denser black fog for doom atmosphere
 
 // Camera: first-person view at eye level
 const camera = new THREE.PerspectiveCamera(75, innerWidth/innerHeight, 0.05, 200);
@@ -265,15 +266,17 @@ addEventListener('resize', ()=>{
 });
 
 // Lights - normal mode
-const ambLight = new THREE.AmbientLight(0x605060, 2.5);
+// Hemisphere light: sky color from above, warm ground bounce from below.
+// Cheap way to get directional gradient shading without lighting math.
+const hemiLight = new THREE.HemisphereLight(0xffd8a0, 0x1a0812, 1.9);
+scene.add(hemiLight);
+// Soft ambient floor for self-lighting of dark corners
+const ambLight = new THREE.AmbientLight(0x403040, 0.7);
 scene.add(ambLight);
-const dirLight = new THREE.DirectionalLight(0xfff0e0, 2.0);
+// Directional for side-lighting (no shadow casting — just shading)
+const dirLight = new THREE.DirectionalLight(0xfff0e0, 1.1);
 dirLight.position.set(10, 30, 10);
-dirLight.castShadow = true;
-dirLight.shadow.mapSize.set(512,512);
-dirLight.shadow.camera.near=1;dirLight.shadow.camera.far=60;
-dirLight.shadow.camera.left=-30;dirLight.shadow.camera.right=30;
-dirLight.shadow.camera.top=22;dirLight.shadow.camera.bottom=-22;
+dirLight.castShadow = false;
 scene.add(dirLight);
 
 // Red point light for doom atmosphere
@@ -376,6 +379,98 @@ const floorTex=mkPixTex(64,paintFloor,AW/4,AH/4);
 const outerWallTex=mkPixTex(64,paintWall,7,1.4);
 const innerWallTex=mkPixTex(64,paintWall,2,1.2);
 const ceilTex=mkPixTex(64,paintCeiling,AW/5,AH/5);
+
+// Entity/weapon textures — organic flesh, brushed metal, wood grain, blob shadow
+function paintFlesh(ctx,s){
+    for(let y=0;y<s;y++)for(let x=0;x<s;x++){
+        const n=(Math.random()-0.5)*70;const v=Math.max(0,Math.min(255,128+n))|0;
+        ctx.fillStyle=`rgb(${v},${v},${v})`;ctx.fillRect(x,y,1,1);
+    }
+    // pores/scars
+    for(let i=0;i<20;i++){
+        ctx.fillStyle=`rgba(40,40,40,${0.15+Math.random()*0.35})`;
+        const sz=1+(Math.random()*3|0);
+        ctx.fillRect(Math.random()*s|0,Math.random()*s|0,sz,sz);
+    }
+    // dark vein streaks
+    for(let i=0;i<5;i++){
+        ctx.strokeStyle='rgba(20,20,20,0.5)';ctx.lineWidth=1;
+        ctx.beginPath();ctx.moveTo(Math.random()*s,Math.random()*s);
+        ctx.lineTo(Math.random()*s,Math.random()*s);ctx.stroke();
+    }
+}
+function paintMetal(ctx,s){
+    // horizontal brush
+    for(let y=0;y<s;y++){
+        const v=130+(Math.random()-0.5)*50|0;
+        ctx.fillStyle=`rgb(${v},${v},${v})`;ctx.fillRect(0,y,s,1);
+    }
+    // scratches
+    for(let i=0;i<6;i++){
+        ctx.fillStyle='rgba(40,40,40,0.6)';
+        const y=Math.random()*s|0;
+        ctx.fillRect(Math.random()*s|0,y,6+(Math.random()*18|0),1);
+    }
+    // rivets
+    ctx.fillStyle='rgba(20,20,20,0.85)';
+    for(let i=0;i<4;i++){
+        ctx.fillRect(((Math.random()*s|0)>>2)<<2,((Math.random()*s|0)>>2)<<2,2,2);
+    }
+}
+function paintWood(ctx,s){
+    for(let y=0;y<s;y++){
+        const v=90+(Math.random()-0.5)*30;
+        ctx.fillStyle=`rgb(${v*1.5|0},${v*0.9|0},${v*0.5|0})`;
+        ctx.fillRect(0,y,s,1);
+    }
+    // grain
+    for(let y=0;y<s;y+=2+(Math.random()*4|0)){
+        ctx.fillStyle=`rgba(40,22,8,${0.3+Math.random()*0.3})`;
+        ctx.fillRect(0,y,s,1);
+    }
+}
+const _fleshTex=mkPixTex(32,paintFlesh,1,1);
+const _metalTex=mkPixTex(32,paintMetal,1,1);
+const _woodTex=mkPixTex(32,paintWood,1,1);
+
+// Fake AO: radial gradient "blob shadow" — one textured plane under each entity.
+// Way cheaper than shadow mapping; gives solid contact feel.
+const _blobTex=(()=>{
+    const c=document.createElement('canvas');c.width=c.height=64;
+    const ctx=c.getContext('2d');
+    const g=ctx.createRadialGradient(32,32,2,32,32,30);
+    g.addColorStop(0,'rgba(0,0,0,0.78)');
+    g.addColorStop(0.6,'rgba(0,0,0,0.35)');
+    g.addColorStop(1,'rgba(0,0,0,0)');
+    ctx.fillStyle=g;ctx.fillRect(0,0,64,64);
+    const t=new THREE.CanvasTexture(c);
+    t.magFilter=THREE.LinearFilter;t.minFilter=THREE.LinearFilter;
+    return t;
+})();
+function mkBlobShadow(radius){
+    const geo=new THREE.PlaneGeometry(radius*2.2,radius*2.2);
+    const mat=new THREE.MeshBasicMaterial({map:_blobTex,transparent:true,depthWrite:false,opacity:0.6});
+    const m=new THREE.Mesh(geo,mat);
+    m.rotation.x=-Math.PI/2;
+    m.position.y=0.03;
+    m.userData.isBlob=true;
+    return m;
+}
+
+// Apply a texture to main body parts of an entity mesh (skip glowing parts).
+// A part is considered "glowing" if its emissive is close to its base color.
+function applyEntityTex(group,tex){
+    group.traverse(c=>{
+        if(!c.isMesh||!c.material||c.userData.isBlob)return;
+        const e=c.material.emissive,col=c.material.color;
+        if(e&&col){
+            const d=Math.abs(e.r-col.r)+Math.abs(e.g-col.g)+Math.abs(e.b-col.b);
+            if(d<0.35)return; // glowing — skip
+        }
+        c.material.map=tex;
+        c.material.needsUpdate=true;
+    });
+}
 
 // Floor
 const floorGeo = new THREE.PlaneGeometry(AW, AH, 20, 14);
@@ -585,7 +680,7 @@ if(isMobile){
     document.body.classList.add('mobile');
     renderer.setPixelRatio(1);
     renderer.shadowMap.enabled=false;
-    scene.fog=new THREE.Fog(0x000000,6,22);
+    scene.fog=new THREE.Fog(0x000000,5,19);
     const sd=document.getElementById('start-desktop'),sm=document.getElementById('start-mobile');
     if(sd)sd.style.display='none';if(sm)sm.style.display='block';
 }
@@ -1045,6 +1140,8 @@ function buildFPWeapon(id){
         _fpPart(0.05,0.07,0.04,0xe8c020,X,Y+0.18,-0.55,0xe8c020);
         _fpPart(0.13,0.2,0.16,0x1a1a1a,X,Y-0.19,-0.28);
     }
+    // Shotgun gets wood grain, others get metal texture. Glowing emitters auto-skipped.
+    applyEntityTex(fpGun, id===2?_woodTex:_metalTex);
     fpGunCurrent=id;
 }
 buildFPWeapon(1);
@@ -1107,6 +1204,8 @@ function mkEnemy(type,x,z){
 
     mesh.position.set(x,0,z);mesh.scale.set(0.01,0.01,0.01);
     mesh.traverse(c=>{if(c.isMesh)c.castShadow=false;});
+    applyEntityTex(mesh,_fleshTex);
+    mesh.add(mkBlobShadow(d.r*0.95));
     scene.add(mesh);
     const ent={alive:true,type,x,z,r:d.r,spd:d.spd,hp:d.hp*hpM,maxHp:d.hp*hpM,dmg:d.dmg,sc:d.sc,
         col:d.col,eye:d.eye,angle:0,ranged:d.ranged||false,fRate:d.fRate||9,shotT:0,hitT:0,kbx:0,kbz:0,
@@ -1275,6 +1374,9 @@ function mkBoss(idx,x,z){
 
     mesh.position.set(x,0,z);mesh.scale.set(0.01,0.01,0.01);
     mesh.traverse(c=>{if(c.isMesh)c.castShadow=false;});
+    // Apply material: metal for CYBERDEMON (idx 2), flesh for all others
+    applyEntityTex(mesh, idx===2?_metalTex:_fleshTex);
+    mesh.add(mkBlobShadow(d.r*1.25));
     scene.add(mesh);
     const bhp=d.hp*1.3;
     return{alive:true,type:'boss',x,z,r:d.r,spd:d.spd,hp:bhp,maxHp:bhp,dmg:d.dmg,sc:d.sc,
@@ -1307,6 +1409,8 @@ function mkPickup(x,z,kind){
         const f3=mkBoxMesh(0.12,0.22,0.12,0xffff80,0xffff80);f3.castShadow=false;f3.position.y=1.05;g.add(f3);
     }
     g.position.set(x,0.4,z);g.scale.set(0.01,0.01,0.01);
+    // blob under pickup; y offset -0.37 to compensate g.position.y=0.4 (put on floor)
+    const blob=mkBlobShadow(0.7);blob.position.y=-0.37;g.add(blob);
     scene.add(g);
     pickups.push({alive:true,x,z,r:0.7,kind,mesh:g,t:Math.random()*6.28,spawnT:0.3});
 }
@@ -1316,9 +1420,13 @@ function mkCrate(x,z){
     const isWep=unlKeys.length>0&&Math.random()<0.4;
     const wi=isWep?unlKeys[Math.floor(Math.random()*unlKeys.length)]:0;
     const color=isWep?0xaa8840:0x308898;
-    const mesh=mkBoxMesh(0.8,0.8,0.8,color,isWep?0x1a1008:0x081a18);
-    mesh.castShadow=false;mesh.position.set(x,0,z);mesh.scale.set(0.01,0.01,0.01);scene.add(mesh);
-    crates.push({alive:true,x,z,r:0.5,kind:isWep?'wep':'ammo',wi,mesh,t:0,spawnT:0.3});
+    const g=new THREE.Group();
+    const box=mkBoxMesh(0.8,0.8,0.8,color,isWep?0x1a1008:0x081a18);
+    box.castShadow=false;g.add(box);
+    applyEntityTex(g,_metalTex);
+    const blob=mkBlobShadow(0.6);blob.position.y=-0.38;g.add(blob);
+    g.position.set(x,0,z);g.scale.set(0.01,0.01,0.01);scene.add(g);
+    crates.push({alive:true,x,z,r:0.5,kind:isWep?'wep':'ammo',wi,mesh:g,t:0,spawnT:0.3});
 }
 
 // ===== EXPLOSION VISUAL FX (simplified - no lights, just particles) =====
@@ -1481,6 +1589,22 @@ function mkLaserBeam(x1,y1,z1,x2,y2,z2,color=0xff2020){
     laserBeams.push({mesh:beam,life:0.06});
 }
 
+// Per-weapon gun-tip Z in camera-local space (matches fpGun mesh tips)
+const WEP_TIP_Z={1:-0.67,2:-0.78,3:-0.92,4:-0.88,5:-0.92,6:-0.78,7:-0.38,8:-0.84,9:-0.94};
+// Transform camera-local (0.26, -0.2, tipZ) to world using exact FPS camera basis.
+// Keeps shots coming from the visual gun barrel tip regardless of yaw/pitch.
+function gunTipWorld(){
+    const a=pl.angle,pit=pl.pitch;
+    const cp=Math.cos(pit),sp=Math.sin(pit);
+    const ca=Math.cos(a),sa=Math.sin(a);
+    const lx=0.26,ly=-0.2,lz=WEP_TIP_Z[pl.wep]||-0.85;
+    return{
+        x: pl.x + lx*(-sa) + ly*(-ca*sp) + lz*(-ca*cp),
+        y: 1.45  + ly*(cp)  + lz*(-sp),
+        z: pl.z + lx*(ca)  + ly*(-sa*sp) + lz*(-sa*cp)
+    };
+}
+
 function playerShoot(){
     const w=WEAP[pl.wep];
     pl.shotT=w.rate*pl.rateM;sfx[w.sfx]();shake=Math.max(shake,w.sz>0.15?0.3:0.1);
@@ -1488,14 +1612,12 @@ function playerShoot(){
     const dmg=w.dmg*pl.dmgM*(pl.rageT>0?2.5:1);
 
     if(w.laser){
-        // True 3D beam from gun tip along aim direction (yaw + pitch).
+        // True 3D beam from exact gun barrel tip along aim direction (yaw + pitch).
         const a=pl.angle,pit=pl.pitch;
         const cp=Math.cos(pit),sp=Math.sin(pit);
         const fx=Math.cos(a)*cp, fy=sp, fz=Math.sin(a)*cp; // aim dir (unit)
-        const rgtX=-Math.sin(a),rgtZ=Math.cos(a);
-        const sx=pl.x+Math.cos(a)*cp*0.7+rgtX*0.25;
-        const sy=1.25+sp*0.6;
-        const sz=pl.z+Math.sin(a)*cp*0.7+rgtZ*0.25;
+        const tip=gunTipWorld();
+        const sx=tip.x, sy=tip.y, sz=tip.z;
         // March in 3D until we hit floor/ceiling/wall
         const stepSize=0.4,maxDist=60;
         let cx=sx,cy=sy,cz=sz,dist=0;
@@ -1532,12 +1654,9 @@ function playerShoot(){
         return;
     }
 
-    // Gun-tip offset: forward (pitched) + slight right. Right axis stays horizontal.
-    const cpG=Math.cos(pl.pitch),spG=Math.sin(pl.pitch);
-    const grX=-Math.sin(pl.angle),grZ=Math.cos(pl.angle);
-    const tipX=pl.x+Math.cos(pl.angle)*cpG*0.7+grX*0.25;
-    const tipZ=pl.z+Math.sin(pl.angle)*cpG*0.7+grZ*0.25;
-    const tipY=1.25+spG*0.6;
+    // Exact gun-tip spawn (matches visible barrel position in camera-local space)
+    const tipW=gunTipWorld();
+    const tipX=tipW.x,tipY=tipW.y,tipZ=tipW.z;
     for(let i=0;i<w.count;i++){
         const sp=(Math.random()-0.5)*w.spread*2;
         const a=pl.angle+sp;
@@ -2224,7 +2343,7 @@ function adaptQuality(t){
             _qualityLow=false;
             renderer.shadowMap.enabled=true;
             renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));
-            scene.fog=new THREE.Fog(0x000000,9,30);
+            scene.fog=new THREE.Fog(0x000000,7,24);
         }
     }
 }
