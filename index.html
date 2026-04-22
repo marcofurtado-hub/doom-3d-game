@@ -1411,35 +1411,35 @@ function dst(a,b){return Math.hypot(a.x-b.x,a.z-b.z);}
 // ===== GAME FLOW =====
 function fmtTime(s){const m=Math.floor(s/60);const ss=Math.floor(s%60);return m+':'+(ss<10?'0':'')+ss;}
 
-// ===== GLOBAL LEADERBOARD (dreamlo.com) =====
-// Setup (1 minuto, sem conta):
-//   1. Abre https://dreamlo.com/addboard
-//   2. Preenche nome da board (ex: "doomzinho_fps")
-//   3. Copia os 2 codes que aparecem:
-//        - Private code → LB_PRIVATE (pra salvar scores)
-//        - Public code  → LB_PUBLIC  (pra ler leaderboard)
-//   4. Substitui as duas strings abaixo e faz push de novo
-const LB_PRIVATE='PUT_PRIVATE_CODE_HERE';
-const LB_PUBLIC='PUT_PUBLIC_CODE_HERE';
-const LB_BASE='https://www.dreamlo.com/lb/';
-const _lbConfigured=()=>!LB_PRIVATE.startsWith('PUT_')&&!LB_PUBLIC.startsWith('PUT_');
+// ===== GLOBAL LEADERBOARD (npoint.io — anonymous, HTTPS, CORS-enabled) =====
+// Document shared by everyone who plays this build. Top 100 scores worldwide.
+// Anyone can write, anyone can read — accepted tradeoff for no-backend setup.
+const LB_URL='https://api.npoint.io/1989f4119faa03c3b26c';
 
-async function lbSubmit(name,sc,wave,time){
-    if(!_lbConfigured())return;
-    const n=(name||'PLAYER').replace(/[^A-Za-z0-9_-]/g,'').slice(0,12)||'PLAYER';
-    const url=LB_BASE+LB_PRIVATE+'/add/'+encodeURIComponent(n)+'/'+Math.floor(sc)+'/'+Math.floor(time)+'/'+wave;
-    try{await fetch(url);}catch(e){console.warn('lb submit failed',e);}
-}
-async function lbFetch(n=100){
-    if(!_lbConfigured())return null;
+async function lbFetch(){
     try{
-        const res=await fetch(LB_BASE+LB_PUBLIC+'/json/'+n);
+        const res=await fetch(LB_URL,{cache:'no-store'});
         const j=await res.json();
-        let e=j&&j.dreamlo&&j.dreamlo.leaderboard&&j.dreamlo.leaderboard.entry;
-        if(!e)return [];
-        if(!Array.isArray(e))e=[e];
-        return e.map(x=>({name:x.name,score:+x.score||0,time:+x.seconds||0,wave:+x.text||0}));
+        return (j&&Array.isArray(j.scores))?j.scores:[];
     }catch(e){console.warn('lb fetch failed',e);return null;}
+}
+async function lbSubmit(name,sc,wave,time){
+    try{
+        // Fetch current → append → sort → truncate → post back (best-effort; races
+        // can overwrite concurrent submits, but fine for a low-traffic arcade).
+        const res=await fetch(LB_URL,{cache:'no-store'});
+        const j=await res.json();
+        const scores=(j&&Array.isArray(j.scores))?j.scores.slice():[];
+        const n=(name||'PLAYER').replace(/[^A-Za-z0-9_-]/g,'').slice(0,12)||'PLAYER';
+        scores.push({name:n,score:Math.floor(sc),wave:wave|0,time:Math.floor(time),ts:Date.now()});
+        scores.sort((a,b)=>b.score-a.score);
+        const top=scores.slice(0,100);
+        await fetch(LB_URL,{
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({scores:top})
+        });
+    }catch(e){console.warn('lb submit failed',e);}
 }
 
 function saveRanking(name,sc,wave,time){
@@ -1449,9 +1449,8 @@ function saveRanking(name,sc,wave,time){
     localStorage.setItem('doom3dRank',JSON.stringify(rankings));
 }
 async function showRanking(){
-    const loading='<div style="color:#888;font-size:13px">carregando ranking global...</div>';
-    $goRank.innerHTML=loading;
-    const global=_lbConfigured()?await lbFetch(100):null;
+    $goRank.innerHTML='<div style="color:#888;font-size:13px">carregando ranking global...</div>';
+    const global=await lbFetch();
     const list=(global&&global.length>0)?global:rankings;
     const title=(global&&global.length>0)?`TOP ${list.length} MUNDIAL`:'TOP 10 LOCAL';
     let h='<div style="color:#e03818;font-size:14px;font-weight:bold;margin-bottom:6px;letter-spacing:2px">'+title+'</div>';
