@@ -312,11 +312,17 @@ const redLight=_lightStub, plLight=_lightStub, muzzleLight=_lightStub;
 // No flashlight - standard top-down lighting
 function updateFlashlight(){} // no-op
 
-// Muzzle flash - just a brief boost on the shared muzzleLight
+// Muzzle flash — animates the spiky star mesh at gun tip.
+// flashT is set on shot; render loop scales & fades it out.
 function triggerMuzzleFlash(color){
-    muzzleLight.color.setHex(color);
-    muzzleLight.intensity=3;
-    setTimeout(()=>muzzleLight.intensity=0,50);
+    if(typeof flashMesh==='undefined')return; // called before mesh ready
+    flashT=0.09; // ~90ms visibility
+    // Mostly yellow (user asked), tinted slightly toward weapon color
+    _flashMat.color.setHex(color);
+    _flashMat.opacity=0.95;
+    // Random Z rotation + slight scale variance for "different shape each shot"
+    flashMesh.rotation.z=Math.random()*Math.PI*2;
+    flashSize=0.22+Math.random()*0.08;
 }
 function acquireBulletLight(color){return null;}
 function releaseBulletLight(l){}
@@ -1070,6 +1076,34 @@ scene.add(plGroup);
 const fpGun=new THREE.Group();
 camera.add(fpGun);
 let fpGunCurrent=0;
+
+// ===== MUZZLE FLASH =====
+// Procedural pointy star mesh (6-pointed). Shows briefly at gun tip on each
+// shot. Parented to fpGun so it follows recoil/bob. Camera-facing (flat on
+// camera-local XY plane).
+const _flashGeo=(()=>{
+    const points=6,outR=1,inR=0.38,vs=[0,0,0];
+    for(let i=0;i<points*2;i++){
+        const r=i%2===0?outR:inR;
+        const a=(i/(points*2))*Math.PI*2;
+        vs.push(Math.cos(a)*r,Math.sin(a)*r,0);
+    }
+    const idx=[];
+    for(let i=1;i<=points*2;i++)idx.push(0,i,i===points*2?1:i+1);
+    const g=new THREE.BufferGeometry();
+    g.setAttribute('position',new THREE.Float32BufferAttribute(vs,3));
+    g.setIndex(idx);
+    return g;
+})();
+const _flashMat=new THREE.MeshBasicMaterial({
+    color:0xffdd20,transparent:true,opacity:0.95,
+    side:THREE.DoubleSide,depthWrite:false
+});
+const flashMesh=new THREE.Mesh(_flashGeo,_flashMat);
+flashMesh.scale.setScalar(0); // hidden by default
+flashMesh.position.set(0.26,-0.2,-0.95); // just past gun tip in camera-local
+fpGun.add(flashMesh);
+let flashT=0,flashSize=0.22;
 function _fpPart(w,h,d,color,px,py,pz,emissive=0){
     const m=mkBoxMesh(w,h,d,color,emissive);
     m.position.set(px,py,pz);
@@ -1777,7 +1811,10 @@ function playerShoot(){
     const w=WEAP[pl.wep];
     pl.shotT=w.rate*pl.rateM;sfx[w.sfx]();shake=Math.max(shake,w.sz>0.15?0.3:0.1);
     triggerMuzzleFlash(w.color);
-    // NUKE: single-use weapon that ends the run in victory
+    // Recoil kick works for every weapon (laser/bullet) — small for fast repeats
+    const kick=w.sz>0.15?0.18:(w.laser?0.06:0.12);
+    fpGun.position.z=kick;
+    fpGun.rotation.x=-kick*0.7;
     if(w.nuke){triggerNuke();return;}
     const dmg=w.dmg*pl.dmgM*(pl.rageT>0?2.5:1);
 
@@ -1840,8 +1877,7 @@ function playerShoot(){
         bullets.push(b);
         if(w.fireGround)emitP(tipX,tipZ,w.color,2,2);
     }
-    // Recoil kick on FP gun
-    fpGun.position.z=0.08;
+    // (recoil já aplicado no topo de playerShoot)
 }
 
 function enShoot(e){
@@ -2127,11 +2163,23 @@ function update(dt){
 
     // Rebuild FP weapon model when changing weapon
     if(fpGunCurrent!==pl.wep)buildFPWeapon(pl.wep);
-    // FP gun bob + recoil recovery
+    // FP gun bob + recoil recovery (kick back along Z + tilt barrel up via rotation.x)
     const moving=(dx||dz)?1:0;
     if(moving){fpGun.position.x=0.004*Math.sin(pl.walkPhase*2);fpGun.position.y=-0.008*Math.abs(Math.sin(pl.walkPhase));}
     else{fpGun.position.x*=0.85;fpGun.position.y*=0.85;}
-    fpGun.position.z*=0.82; // recoil recovery toward 0
+    fpGun.position.z*=0.82;      // Z kick recovery
+    fpGun.rotation.x*=0.82;      // barrel-tilt recovery
+
+    // Muzzle flash fade-out — shrink scale linearly with remaining time
+    if(flashT>0){
+        flashT-=dt;
+        if(flashT<=0){flashMesh.scale.setScalar(0);}
+        else{
+            const t=flashT/0.09; // 1 → 0
+            flashMesh.scale.setScalar(flashSize*(0.6+0.4*t));
+            _flashMat.opacity=t*0.95;
+        }
+    }
     // Chaingun rotary barrels spin (only the sub-group, not whole gun)
     fpGun.rotation.z=0;
     if(pl.wep===3){
