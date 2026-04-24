@@ -208,7 +208,8 @@ body.mobile #crosshair{top:calc(50% - 29px)}
 
 <div id="pause-screen">
     <h1>PAUSED</h1>
-    <p style="color:#888;font-size:13px">Volume: <span id="vol-down">−</span> <span id="vol-val" style="color:#e8c020;padding:0 8px;border:none">50%</span> <span id="vol-up">+</span></p>
+    <p style="color:#888;font-size:13px">SFX: <span id="vol-down">−</span> <span id="vol-val" style="color:#e8c020;padding:0 8px;border:none">50%</span> <span id="vol-up">+</span></p>
+    <p style="color:#888;font-size:13px;margin-top:6px">Música: <span id="mvol-down">−</span> <span id="mvol-val" style="color:#e8c020;padding:0 8px;border:none">50%</span> <span id="mvol-up">+</span></p>
     <p style="color:#666;font-size:11px;margin-top:4px">(ESC no desktop)</p>
     <span id="pause-resume">▶ RESUMIR</span>
 </div>
@@ -839,8 +840,14 @@ if(isMobile){
 }
 
 // ===== AUDIO =====
-let ac=null,mvol=null;
-function initAudio(){if(ac)return;ac=new(window.AudioContext||window.webkitAudioContext)();mvol=ac.createGain();mvol.gain.value=0.25;mvol.connect(ac.destination);}
+let ac=null,mvol=null,musicBus=null;
+let musicVolume=parseInt(localStorage.getItem('doom3dMusicVol'))||50;
+function initAudio(){
+    if(ac)return;
+    ac=new(window.AudioContext||window.webkitAudioContext)();
+    mvol=ac.createGain();mvol.gain.value=volume/200;mvol.connect(ac.destination); // SFX bus
+    musicBus=ac.createGain();musicBus.gain.value=musicVolume/200;musicBus.connect(ac.destination); // Music bus
+}
 function beep(f,d,t='square',v=0.1){if(!ac)return;const o=ac.createOscillator(),g=ac.createGain();o.type=t;o.frequency.value=f;g.gain.setValueAtTime(v,ac.currentTime);g.gain.exponentialRampToValueAtTime(0.001,ac.currentTime+d);o.connect(g);g.connect(mvol);o.start();o.stop(ac.currentTime+d);}
 function noise(d,v=0.1){if(!ac)return;const bs=ac.sampleRate*d,nb=ac.createBuffer(1,bs,ac.sampleRate),dd=nb.getChannelData(0);for(let i=0;i<bs;i++)dd[i]=(Math.random()*2-1)*Math.pow(1-i/bs,2);const s=ac.createBufferSource(),g=ac.createGain(),f=ac.createBiquadFilter();s.buffer=nb;f.type='lowpass';f.frequency.value=3000;g.gain.setValueAtTime(v,ac.currentTime);g.gain.exponentialRampToValueAtTime(0.001,ac.currentTime+d);s.connect(f);f.connect(g);g.connect(mvol);s.start();s.stop(ac.currentTime+d);}
 const sfx={
@@ -889,8 +896,8 @@ const bLead=[ // boss lead: down a tone, more agitated
 
 function startMusic(){
     if(musInt||!ac)return;musStep=0;
-    // Master bus
-    const mg=ac.createGain();mg.gain.value=0.11;mg.connect(ac.destination);
+    // Master bus → music volume bus → destination (so pause slider controls it)
+    const mg=ac.createGain();mg.gain.value=0.11;mg.connect(musicBus||ac.destination);
     // Distorted guitar bus (sawtooth → waveshaper tanh*6)
     const guitar=ac.createWaveShaper();const curve=new Float32Array(256);
     for(let i=0;i<256;i++){const x=i*2/256-1;curve[i]=Math.tanh(x*6);}
@@ -1039,7 +1046,7 @@ let state='menu',phase='idle',phaseT=0;
 let waveNum=0,score=0,kills=0,combo=0,comboT=0,comboX=1;
 let hiScore=parseInt(localStorage.getItem('doom3dHi'))||0;
 let rankings=JSON.parse(localStorage.getItem('doom3dRank')||'[]');
-let gameTime=0,paused=false,shake=0,nextBoss=0,volume=50;
+let gameTime=0,paused=false,shake=0,nextBoss=0,volume=parseInt(localStorage.getItem('doom3dVol'))||50;
 let toSpawn=0,spawnT=0,spawnRate=0,crateT=0;
 
 // Player
@@ -1714,8 +1721,15 @@ $('go-save').onclick=async()=>{
     showRanking();
 };
 $('go-restart').onclick=()=>{if(state==='dead')startGame();};
-$('vol-down').onclick=()=>{volume=Math.max(0,volume-10);$('vol-val').textContent=volume+'%';if(mvol)mvol.gain.value=volume/200;};
-$('vol-up').onclick=()=>{volume=Math.min(100,volume+10);$('vol-val').textContent=volume+'%';if(mvol)mvol.gain.value=volume/200;};
+// SFX volume
+$('vol-down').onclick=()=>{volume=Math.max(0,volume-10);$('vol-val').textContent=volume+'%';if(mvol)mvol.gain.value=volume/200;localStorage.setItem('doom3dVol',volume);};
+$('vol-up').onclick=()=>{volume=Math.min(100,volume+10);$('vol-val').textContent=volume+'%';if(mvol)mvol.gain.value=volume/200;localStorage.setItem('doom3dVol',volume);};
+// Music volume (independent bus)
+$('mvol-down').onclick=()=>{musicVolume=Math.max(0,musicVolume-10);$('mvol-val').textContent=musicVolume+'%';if(musicBus)musicBus.gain.value=musicVolume/200;localStorage.setItem('doom3dMusicVol',musicVolume);};
+$('mvol-up').onclick=()=>{musicVolume=Math.min(100,musicVolume+10);$('mvol-val').textContent=musicVolume+'%';if(musicBus)musicBus.gain.value=musicVolume/200;localStorage.setItem('doom3dMusicVol',musicVolume);};
+// Initialize the displayed values from saved prefs
+$('vol-val').textContent=volume+'%';
+$('mvol-val').textContent=musicVolume+'%';
 $('pause-resume').onclick=()=>{if(state==='play'&&paused){paused=false;$pause.style.display='none';const bp=document.getElementById('btn-pause');if(bp)bp.textContent='II';}};
 
 // ===== VICTORY / NUKE =====
