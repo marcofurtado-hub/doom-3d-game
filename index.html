@@ -316,14 +316,13 @@ function updateFlashlight(){} // no-op
 // Muzzle flash — animates the spiky star mesh at gun tip.
 // flashT is set on shot; render loop scales & fades it out.
 function triggerMuzzleFlash(color){
-    if(typeof flashMesh==='undefined')return; // called before mesh ready
-    flashT=0.09; // ~90ms visibility
-    // Mostly yellow (user asked), tinted slightly toward weapon color
-    _flashMat.color.setHex(color);
-    _flashMat.opacity=0.95;
-    // Random Z rotation + slight scale variance for "different shape each shot"
+    if(typeof flashMesh==='undefined')return;
+    flashT=0.1; // ~100ms visibility
+    // Mostly yellow — user asked for "polígonos pontudos amarelos"
+    _flashMat.color.setHex(0xffdd20);
+    _flashMat.opacity=1.0;
     flashMesh.rotation.z=Math.random()*Math.PI*2;
-    flashSize=0.22+Math.random()*0.08;
+    flashSize=0.4+Math.random()*0.15; // bigger + random variation
 }
 function acquireBulletLight(color){return null;}
 function releaseBulletLight(l){}
@@ -1207,13 +1206,16 @@ const _flashGeo=(()=>{
 })();
 const _flashMat=new THREE.MeshBasicMaterial({
     color:0xffdd20,transparent:true,opacity:0.95,
-    side:THREE.DoubleSide,depthWrite:false
+    side:THREE.DoubleSide,
+    depthWrite:false,depthTest:false, // always renders on top of gun
+    blending:THREE.AdditiveBlending // glowy additive blend for "energy burst"
 });
 const flashMesh=new THREE.Mesh(_flashGeo,_flashMat);
 flashMesh.scale.setScalar(0); // hidden by default
-flashMesh.position.set(0.26,-0.2,-0.95); // just past gun tip in camera-local
+flashMesh.position.set(0.26,-0.2,-0.95); // at gun tip (camera-local)
+flashMesh.renderOrder=999; // draw last → always visible
 fpGun.add(flashMesh);
-let flashT=0,flashSize=0.22;
+let flashT=0,flashSize=0.35;
 function _fpPart(w,h,d,color,px,py,pz,emissive=0){
     const m=mkBoxMesh(w,h,d,color,emissive);
     m.position.set(px,py,pz);
@@ -2287,14 +2289,14 @@ function update(dt){
     fpGun.position.z*=0.82;      // Z kick recovery
     fpGun.rotation.x*=0.82;      // barrel-tilt recovery
 
-    // Muzzle flash fade-out — shrink scale linearly with remaining time
+    // Muzzle flash fade-out — shrinks + fades over 100ms
     if(flashT>0){
         flashT-=dt;
         if(flashT<=0){flashMesh.scale.setScalar(0);}
         else{
-            const t=flashT/0.09; // 1 → 0
-            flashMesh.scale.setScalar(flashSize*(0.6+0.4*t));
-            _flashMat.opacity=t*0.95;
+            const t=flashT/0.1; // 1 → 0
+            flashMesh.scale.setScalar(flashSize*(0.5+0.5*t));
+            _flashMat.opacity=t;
         }
     }
     // Chaingun rotary barrels spin (only the sub-group, not whole gun)
