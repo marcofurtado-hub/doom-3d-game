@@ -1045,7 +1045,7 @@ let toSpawn=0,spawnT=0,spawnRate=0,crateT=0;
 // Player
 const pl={x:0,z:0,r:0.5,angle:0,pitch:0,hp:20,maxHp:20,spd:10,wep:1,shotT:0,shotBufT:0,dmgM:1,rateM:1,dashCd:0,dashT:0,inv:0,hurtT:0,walkPhase:0,shieldT:0,rageT:0,y:0,vy:0,jumpCd:0};
 const PITCH_MAX=1.35; // ~77° up/down
-const JUMP_V=6.2, GRAVITY=15; // jump velocity & world gravity for player arc
+const JUMP_V=8.5, GRAVITY=15; // jump ~2.4 units high — enough to clear most enemies
 
 // Entity arrays
 let enemies=[],bullets=[],particles=[],crates=[],pickups=[],firePatches=[];
@@ -2366,7 +2366,7 @@ function update(dt){
         if(e.boss){
             e.skillT-=dt;e.shotT-=dt;
             const walk=(m)=>{if(d>e.r+pl.r+0.2)e.x+=(edx/d)*e.spd*m*dt,e.z+=(edz/d)*e.spd*m*dt;};
-            const melee=()=>{if(d<e.r+pl.r+0.3&&pl.inv<=0){pl.hp-=e.dmg*0.5*dt;pl.hurtT=0.05;if(pl.hp<=0)die();}};
+            const melee=()=>{if(d<e.r+pl.r+0.3&&pl.inv<=0&&pl.y<(e.bodyTop||3.5)*0.85){pl.hp-=e.dmg*0.5*dt;pl.hurtT=0.05;if(pl.hp<=0)die();}};
             const p=e.pat;
 
             if(p==='charge'){
@@ -2487,7 +2487,8 @@ function update(dt){
             e.shotT-=dt;if(e.shotT<=0){e.shotT=e.fRate;enShoot(e);}
         }else{
             if(d>e.r+pl.r+0.2)e.x+=(edx/d)*e.spd*dt,e.z+=(edz/d)*e.spd*dt;
-            else if(pl.inv<=0){pl.hp-=e.dmg*0.8*dt;pl.hurtT=0.05;if(pl.hp<=0)die();}
+            // Only take melee damage if player's feet are below enemy's head (can jump over!)
+            else if(pl.inv<=0&&pl.y<(e.bodyTop||1.7)*0.85){pl.hp-=e.dmg*0.8*dt;pl.hurtT=0.05;if(pl.hp<=0)die();}
         }
         clampA(e);colInnerWalls(e);
         // Push apart
