@@ -313,16 +313,25 @@ const redLight=_lightStub, plLight=_lightStub, muzzleLight=_lightStub;
 // No flashlight - standard top-down lighting
 function updateFlashlight(){} // no-op
 
-// Muzzle flash — animates the spiky star mesh at gun tip.
-// flashT is set on shot; render loop scales & fades it out.
+// Muzzle flash — varied spiky star at gun tip each shot.
 // Color: yellow for bullets, laser color for laser weapons.
 function triggerMuzzleFlash(color){
     if(typeof flashMesh==='undefined')return;
-    flashT=0.1;
+    flashT=0.08;
     _flashMat.color.setHex(color);
     _flashMat.opacity=1.0;
+    // Per-shot randomization for visual variety:
     flashMesh.rotation.z=Math.random()*Math.PI*2;
-    flashSize=0.4+Math.random()*0.15;
+    // Place past the barrel tip (barrels max at z=-0.94 for mega bomb); add jitter
+    flashMesh.position.set(
+        0.26+(Math.random()-0.5)*0.1,
+        -0.2+(Math.random()-0.5)*0.08,
+        -1.02+(Math.random()-0.5)*0.06
+    );
+    // Asymmetric scale per shot — different shape each time
+    flashSize=0.14+Math.random()*0.1; // much smaller than before
+    flashMesh._sX=0.8+Math.random()*0.5;
+    flashMesh._sY=0.8+Math.random()*0.5;
 }
 function acquireBulletLight(color){return null;}
 function releaseBulletLight(l){}
@@ -850,22 +859,24 @@ function initAudio(){
 function beep(f,d,t='square',v=0.1){if(!ac)return;const o=ac.createOscillator(),g=ac.createGain();o.type=t;o.frequency.value=f;g.gain.setValueAtTime(v,ac.currentTime);g.gain.exponentialRampToValueAtTime(0.001,ac.currentTime+d);o.connect(g);g.connect(mvol);o.start();o.stop(ac.currentTime+d);}
 function noise(d,v=0.1){if(!ac)return;const bs=ac.sampleRate*d,nb=ac.createBuffer(1,bs,ac.sampleRate),dd=nb.getChannelData(0);for(let i=0;i<bs;i++)dd[i]=(Math.random()*2-1)*Math.pow(1-i/bs,2);const s=ac.createBufferSource(),g=ac.createGain(),f=ac.createBiquadFilter();s.buffer=nb;f.type='lowpass';f.frequency.value=3000;g.gain.setValueAtTime(v,ac.currentTime);g.gain.exponentialRampToValueAtTime(0.001,ac.currentTime+d);s.connect(f);f.connect(g);g.connect(mvol);s.start();s.stop(ac.currentTime+d);}
 const sfx={
-    shoot:()=>{noise(0.08,0.12);beep(400,0.03,'square',0.04);},
-    shotgun:()=>{noise(0.15,0.18);beep(120,0.08,'sawtooth',0.08);beep(80,0.1,'square',0.05);},
-    chain:()=>{noise(0.04,0.1);beep(600,0.02,'square',0.03);},
-    rocket:()=>{noise(0.2,0.15);beep(80,0.3,'sawtooth',0.1);beep(50,0.35,'square',0.08);},
-    plasma:()=>{beep(1800,0.08,'sine',0.08);beep(2400,0.06,'sine',0.06);noise(0.05,0.04);},
-    bomb:()=>{noise(0.3,0.2);beep(50,0.4,'sawtooth',0.15);beep(30,0.5,'square',0.1);},
-    molotov:()=>{noise(0.25,0.12);beep(200,0.2,'sawtooth',0.06);},
-    hit:()=>{noise(0.03,0.06);beep(350+Math.random()*150,0.03,'square',0.03);},
-    kill:()=>{noise(0.08,0.1);beep(150,0.08,'sawtooth',0.06);beep(80,0.1,'square',0.04);},
-    pickup:()=>{beep(600,0.05,'sine',0.07);beep(900,0.05,'sine',0.06);},
-    boss:()=>{noise(0.3,0.12);beep(60,0.3,'sawtooth',0.1);beep(40,0.35,'sawtooth',0.08);},
-    explode:()=>{noise(0.35,0.2);beep(60,0.3,'sawtooth',0.12);beep(30,0.4,'square',0.08);},
-    dash:()=>{beep(500,0.04,'sine',0.04);beep(800,0.03,'sine',0.03);},
-    ricochet:()=>{noise(0.06,0.08);beep(3000+Math.random()*2000,0.03,'sine',0.03);beep(100+Math.random()*60,0.08,'sine',0.04);},
-    laser:()=>{beep(1200,0.04,'sine',0.06);beep(1600,0.03,'sine',0.04);},
-    megabomb:()=>{noise(0.5,0.25);beep(30,0.6,'sawtooth',0.2);beep(20,0.7,'square',0.15);},
+    // Weapon shots — louder + thicker (added low-end bass thump to each)
+    shoot:()=>{noise(0.09,0.22);beep(450,0.04,'square',0.1);beep(110,0.08,'sawtooth',0.1);},
+    shotgun:()=>{noise(0.18,0.32);beep(120,0.12,'sawtooth',0.18);beep(55,0.18,'square',0.14);beep(1200,0.02,'square',0.08);},
+    chain:()=>{noise(0.05,0.18);beep(700,0.03,'square',0.08);beep(180,0.04,'sawtooth',0.07);},
+    rocket:()=>{noise(0.28,0.3);beep(70,0.4,'sawtooth',0.22);beep(40,0.45,'square',0.18);beep(180,0.08,'sawtooth',0.1);},
+    plasma:()=>{beep(1800,0.08,'sine',0.14);beep(2400,0.06,'sine',0.1);noise(0.05,0.08);},
+    bomb:()=>{noise(0.4,0.35);beep(45,0.5,'sawtooth',0.24);beep(25,0.6,'square',0.18);beep(160,0.1,'sawtooth',0.12);},
+    molotov:()=>{noise(0.3,0.22);beep(220,0.22,'sawtooth',0.12);beep(90,0.15,'sawtooth',0.1);},
+    laser:()=>{beep(1200,0.05,'sine',0.14);beep(1600,0.04,'sine',0.1);beep(140,0.04,'sawtooth',0.08);},
+    megabomb:()=>{noise(0.6,0.35);beep(28,0.7,'sawtooth',0.3);beep(18,0.8,'square',0.22);beep(100,0.2,'sawtooth',0.15);},
+    // Non-shot SFX — moderate boost
+    hit:()=>{noise(0.03,0.08);beep(350+Math.random()*150,0.03,'square',0.04);},
+    kill:()=>{noise(0.09,0.14);beep(150,0.1,'sawtooth',0.09);beep(80,0.12,'square',0.07);},
+    pickup:()=>{beep(600,0.05,'sine',0.09);beep(900,0.05,'sine',0.07);},
+    boss:()=>{noise(0.32,0.15);beep(60,0.32,'sawtooth',0.13);beep(40,0.38,'sawtooth',0.1);},
+    explode:()=>{noise(0.4,0.28);beep(55,0.35,'sawtooth',0.18);beep(28,0.45,'square',0.14);},
+    dash:()=>{beep(500,0.04,'sine',0.06);beep(800,0.03,'sine',0.04);},
+    ricochet:()=>{noise(0.06,0.1);beep(3000+Math.random()*2000,0.03,'sine',0.04);beep(100+Math.random()*60,0.08,'sine',0.05);},
 };
 
 // ===== MUSIC (dynamic normal/boss) =====
@@ -1207,8 +1218,9 @@ const _flashGeo=(()=>{
 const _flashMat=new THREE.MeshBasicMaterial({
     color:0xffdd20,transparent:true,opacity:0.95,
     side:THREE.DoubleSide,
-    depthWrite:false,depthTest:false, // always renders on top of gun
-    blending:THREE.AdditiveBlending // glowy additive blend for "energy burst"
+    depthWrite:false, // don't occlude scene behind
+    depthTest:true,   // DO get occluded by gun → flash "emerges" from behind barrel
+    blending:THREE.AdditiveBlending
 });
 const flashMesh=new THREE.Mesh(_flashGeo,_flashMat);
 flashMesh.scale.setScalar(0); // hidden by default
@@ -2295,13 +2307,14 @@ function update(dt){
     fpGun.position.z*=0.82;      // Z kick recovery
     fpGun.rotation.x*=0.82;      // barrel-tilt recovery
 
-    // Muzzle flash fade-out — shrinks + fades over 100ms
+    // Muzzle flash fade-out — shrinks + fades over 80ms (asymmetric scale)
     if(flashT>0){
         flashT-=dt;
         if(flashT<=0){flashMesh.scale.setScalar(0);}
         else{
-            const t=flashT/0.1; // 1 → 0
-            flashMesh.scale.setScalar(flashSize*(0.5+0.5*t));
+            const t=flashT/0.08;
+            const s=flashSize*(0.4+0.6*t);
+            flashMesh.scale.set(s*(flashMesh._sX||1), s*(flashMesh._sY||1), 1);
             _flashMat.opacity=t;
         }
     }
