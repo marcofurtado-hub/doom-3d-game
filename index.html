@@ -872,122 +872,150 @@ const sfx={
 // ===== MUSIC (dynamic normal/boss) =====
 let musInt=null,musStep=0,musMode='normal';
 function setMusMode(m){musMode=m;}
-// === VIKING METAL MUSIC ===
-// Epic chord progression in E natural minor: i - VI - III - VII (Em-C-G-D).
-// Each chord: [root_hz, fifth_hz] → power-chord bass double-tracking.
-// Progression runs 4 chords × 8 steps = 32-step loop.
-const nChords=[ [82.4, 123.5], [65.4, 98.0], [98.0, 147.0], [73.4, 110.0] ]; // Em, C, G, D
-const bChords=[ [73.4, 110.0], [58.3, 87.3], [87.3, 131.0], [65.4, 98.0] ]; // Dm, Bb, F, C (boss, step down whole tone)
-
-// Melodic lead over the chords — E natural minor, sustained half-notes.
-// 0 = rest (lets previous note ring out).
-const nLead=[
-    330,   0,   0,   0, 392,   0, 494,   0, // Em: E→G→B rise
-    523,   0, 494,   0, 440,   0, 392,   0, // C: C→B→A→G fall
-    494,   0,   0,   0, 587,   0, 494,   0, // G: B→D rise
-    440,   0, 392,   0, 330,   0, 330,   0  // D: A→G→E→E resolve
+// === HEAVY ROCK MUSIC ===
+// Palm-muted chugging over E root with G/A/B accents (pentatonic driven).
+// No ambient pad — just guitar/bass/drums driving forward.
+// Each step: [root_hz, fifth_hz] power-chord pair, or null for rest.
+const _E=82.4, _G=98, _A=110, _B=123.5, _D=73.4, _F=87.3, _C=65.4;
+const _P=(r,f)=>[r,f];
+const nBass=[
+    _P(_E,_B), _P(_E,_B), _P(_E,_B), _P(_E,_B),
+    _P(_E,_B), _P(_G,_D*2), _P(_E,_B), _P(_E,_B),
+    _P(_E,_B), _P(_E,_B), _P(_A,_E*2), _P(_E,_B),
+    _P(_E,_B), _P(_E,_B), _P(_G,_D*2), _P(_E,_B),
+    _P(_E,_B), _P(_E,_B), _P(_E,_B), _P(_E,_B),
+    _P(_E,_B), _P(_G,_D*2), _P(_A,_E*2), _P(_G,_D*2),
+    _P(_E,_B), _P(_G,_D*2), _P(_A,_E*2), _P(_B,_F*2),
+    _P(_A,_E*2), _P(_G,_D*2), _P(_E,_B), null
 ];
-const bLead=[ // boss lead: down a tone, more agitated
-    293,   0, 349,   0, 440,   0, 523,   0, // Dm
-    466,   0, 440,   0, 392,   0, 349,   0, // Bb
-    440,   0, 523,   0, 587,   0, 523,   0, // F
-    392,   0, 349,   0, 293,   0, 293,   0  // C
+const bBass=[ // Boss: detuned to D, more chord movement
+    _P(_D,_A), _P(_D,_A), _P(_D,_A), _P(_D,_A),
+    _P(_D,_A), _P(_F,_C*2), _P(_D,_A), _P(_D,_A),
+    _P(_D,_A), _P(_D,_A), _P(_G,_D*2), _P(_D,_A),
+    _P(_D,_A), _P(_D,_A), _P(_F,_C*2), _P(_D,_A),
+    _P(_D,_A), _P(_D,_A), _P(_D,_A), _P(_D,_A),
+    _P(_D,_A), _P(_F,_C*2), _P(_G,_D*2), _P(_F,_C*2),
+    _P(_D,_A), _P(_F,_C*2), _P(_G,_D*2), _P(_A,_E*2),
+    _P(_G,_D*2), _P(_F,_C*2), _P(_D,_A), null
+];
+// Pentatonic-driven lead riffs (short, aggressive — not sustained)
+const nLead=[
+    330,   0, 392,   0, 440,   0, 494,   0,
+    440, 392, 330,   0,   0,   0,   0,   0,
+    330,   0, 392, 440, 494, 587, 494,   0,
+    440, 392, 330, 294,   0, 330,   0,   0
+];
+const bLead=[ // Boss pentatonic D minor
+    293,   0, 349,   0, 392,   0, 440,   0,
+    392, 349, 293,   0,   0,   0,   0,   0,
+    293,   0, 349, 392, 440, 523, 440,   0,
+    392, 349, 293, 262,   0, 293,   0,   0
 ];
 
 function startMusic(){
     if(musInt||!ac)return;musStep=0;
-    // Master bus → music volume bus → destination (so pause slider controls it)
-    const mg=ac.createGain();mg.gain.value=0.11;mg.connect(musicBus||ac.destination);
-    // Distorted guitar bus (sawtooth → waveshaper tanh*6)
+    const mg=ac.createGain();mg.gain.value=0.14;mg.connect(musicBus||ac.destination);
+    // Heavily saturated guitar bus — tanh*8 for aggressive clip
     const guitar=ac.createWaveShaper();const curve=new Float32Array(256);
-    for(let i=0;i<256;i++){const x=i*2/256-1;curve[i]=Math.tanh(x*6);}
-    guitar.curve=curve;guitar.connect(mg);
-    // Clean bus (pad/drone/drums)
+    for(let i=0;i<256;i++){const x=i*2/256-1;curve[i]=Math.tanh(x*8);}
+    guitar.curve=curve;
+    // Low-pass tames harsh high frequencies (rock tone sweet spot)
+    const gLP=ac.createBiquadFilter();gLP.type='lowpass';gLP.frequency.value=3500;
+    guitar.connect(gLP);gLP.connect(mg);
+    // Clean bus — drums only, no distortion
     const clean=ac.createGain();clean.gain.value=1.0;clean.connect(mg);
-    const ST=60000/148/4; // 148 BPM = slower, majestic tempo
+    const ST=60000/164/4; // 164 BPM heavy rock tempo
 
     musInt=setInterval(()=>{
         const i=musStep%32,boss=musMode==='boss';
-        const chords=boss?bChords:nChords;
+        const bassP=boss?bBass:nBass;
         const leadP=boss?bLead:nLead;
-        const v=boss?1.25:1;
-        const chord=chords[Math.floor(i/8)];
+        const v=boss?1.3:1;
+        const chord=bassP[i];
         const T=ST/1000;
 
-        // POWER-CHORD BASS — root + fifth, palm-muted chug every step
-        for(const f of chord){
-            const o=ac.createOscillator(),g=ac.createGain();
-            o.type='sawtooth';o.frequency.value=f;
-            g.gain.setValueAtTime(0.035*v,ac.currentTime);
-            g.gain.exponentialRampToValueAtTime(0.001,ac.currentTime+T*0.85);
-            o.connect(g);g.connect(guitar);
-            o.start();o.stop(ac.currentTime+T);
+        // POWER-CHORD CHUG — palm-muted root+fifth each step (null = rest for turnaround)
+        if(chord){
+            for(const f of chord){
+                const o=ac.createOscillator(),g=ac.createGain();
+                o.type='sawtooth';o.frequency.value=f;
+                g.gain.setValueAtTime(0,ac.currentTime);
+                g.gain.linearRampToValueAtTime(0.055*v,ac.currentTime+0.005); // snap attack
+                g.gain.exponentialRampToValueAtTime(0.001,ac.currentTime+T*0.6); // short decay = chug
+                o.connect(g);g.connect(guitar);
+                o.start();o.stop(ac.currentTime+T*0.7);
+            }
         }
 
-        // LEAD — sustained melody (notes ring 4 steps ≈ half-note)
+        // LEAD RIFF — short pentatonic licks (2-step decay, not sustained)
         if(leadP[i]>0){
             const o=ac.createOscillator(),g=ac.createGain();
             o.type='sawtooth';o.frequency.value=leadP[i];
-            const dur=T*4;
+            const dur=T*1.8;
             g.gain.setValueAtTime(0,ac.currentTime);
-            g.gain.linearRampToValueAtTime(0.028*v,ac.currentTime+0.025); // quick attack
-            g.gain.linearRampToValueAtTime(0.022*v,ac.currentTime+dur*0.4);
+            g.gain.linearRampToValueAtTime(0.045*v,ac.currentTime+0.008);
             g.gain.exponentialRampToValueAtTime(0.001,ac.currentTime+dur);
             o.connect(g);g.connect(guitar);
             o.start();o.stop(ac.currentTime+dur);
         }
 
-        // PAD DRONE — slow triangle wave on chord root (clean bus, no distortion)
-        if(i%8===0){
-            for(let oct=0;oct<2;oct++){
-                const o=ac.createOscillator(),g=ac.createGain();
-                o.type='triangle';o.frequency.value=chord[0]*(oct===0?2:3); // octave + octave+fifth
-                const dur=T*8;
-                g.gain.setValueAtTime(0,ac.currentTime);
-                g.gain.linearRampToValueAtTime(0.018*v*(oct===0?1:0.6),ac.currentTime+0.15);
-                g.gain.linearRampToValueAtTime(0.014*v*(oct===0?1:0.6),ac.currentTime+dur*0.6);
-                g.gain.exponentialRampToValueAtTime(0.001,ac.currentTime+dur);
-                o.connect(g);g.connect(clean);
-                o.start();o.stop(ac.currentTime+dur);
-            }
-        }
-
-        // KICK DRUM — on beats 1 & 3 (every 4 steps). Heavier on boss.
-        if(i%4===0){
+        // KICK — every beat (4-on-the-floor) + syncopated hits on 'e'-of-3 and 'a'-of-4
+        const kick=(i%4===0)||(i%16===10)||(i%16===14);
+        if(kick){
             const o=ac.createOscillator(),g=ac.createGain();
             o.type='sine';
-            o.frequency.setValueAtTime(120,ac.currentTime);
-            o.frequency.exponentialRampToValueAtTime(38,ac.currentTime+0.09);
-            g.gain.setValueAtTime(0.18*v,ac.currentTime);
-            g.gain.exponentialRampToValueAtTime(0.001,ac.currentTime+0.12);
+            o.frequency.setValueAtTime(130,ac.currentTime);
+            o.frequency.exponentialRampToValueAtTime(42,ac.currentTime+0.08);
+            g.gain.setValueAtTime(0.24*v,ac.currentTime);
+            g.gain.exponentialRampToValueAtTime(0.001,ac.currentTime+0.1);
             o.connect(g);g.connect(clean);
-            o.start();o.stop(ac.currentTime+0.14);
+            o.start();o.stop(ac.currentTime+0.12);
         }
 
-        // SNARE — on beats 2 & 4 (noise burst, tight envelope)
+        // SNARE — backbeat on 2 and 4 (noise + tonal crack)
         if(i%8===4){
-            const bs=ac.sampleRate*0.09,nb=ac.createBuffer(1,bs,ac.sampleRate);
+            const bs=ac.sampleRate*0.1,nb=ac.createBuffer(1,bs,ac.sampleRate);
             const dd=nb.getChannelData(0);
             for(let j=0;j<bs;j++)dd[j]=(Math.random()*2-1)*(1-j/bs);
             const s=ac.createBufferSource(),g=ac.createGain(),hp=ac.createBiquadFilter();
-            s.buffer=nb;hp.type='highpass';hp.frequency.value=800;
-            g.gain.setValueAtTime(0.13*v,ac.currentTime);
-            g.gain.exponentialRampToValueAtTime(0.001,ac.currentTime+0.09);
+            s.buffer=nb;hp.type='highpass';hp.frequency.value=900;
+            g.gain.setValueAtTime(0.18*v,ac.currentTime);
+            g.gain.exponentialRampToValueAtTime(0.001,ac.currentTime+0.1);
             s.connect(hp);hp.connect(g);g.connect(clean);
-            s.start();s.stop(ac.currentTime+0.1);
+            s.start();s.stop(ac.currentTime+0.11);
+            // Snare "crack" — short triangle burst
+            const o=ac.createOscillator(),g2=ac.createGain();
+            o.type='triangle';o.frequency.value=220;
+            g2.gain.setValueAtTime(0.07*v,ac.currentTime);
+            g2.gain.exponentialRampToValueAtTime(0.001,ac.currentTime+0.04);
+            o.connect(g2);g2.connect(clean);
+            o.start();o.stop(ac.currentTime+0.05);
         }
 
-        // CYMBAL/HAT — every 8th step, subtle tick for flow
-        if(i%2===0&&i%8!==0&&i%8!==4){
-            const bs=ac.sampleRate*0.03,nb=ac.createBuffer(1,bs,ac.sampleRate);
+        // CLOSED HI-HAT — 8th notes for constant drive
+        if(i%2===0){
+            const bs=ac.sampleRate*0.025,nb=ac.createBuffer(1,bs,ac.sampleRate);
             const dd=nb.getChannelData(0);
             for(let j=0;j<bs;j++)dd[j]=(Math.random()*2-1)*(1-j/bs);
             const s=ac.createBufferSource(),g=ac.createGain(),hp=ac.createBiquadFilter();
-            s.buffer=nb;hp.type='highpass';hp.frequency.value=5000;
-            g.gain.setValueAtTime(0.04*v,ac.currentTime);
-            g.gain.exponentialRampToValueAtTime(0.001,ac.currentTime+0.03);
+            s.buffer=nb;hp.type='highpass';hp.frequency.value=6500;
+            g.gain.setValueAtTime(0.06*v,ac.currentTime);
+            g.gain.exponentialRampToValueAtTime(0.001,ac.currentTime+0.025);
             s.connect(hp);hp.connect(g);g.connect(clean);
-            s.start();s.stop(ac.currentTime+0.04);
+            s.start();s.stop(ac.currentTime+0.03);
+        }
+
+        // CRASH at loop start — bright accent
+        if(i===0){
+            const bs=ac.sampleRate*0.5,nb=ac.createBuffer(1,bs,ac.sampleRate);
+            const dd=nb.getChannelData(0);
+            for(let j=0;j<bs;j++)dd[j]=(Math.random()*2-1)*(1-j/bs);
+            const s=ac.createBufferSource(),g=ac.createGain(),hp=ac.createBiquadFilter();
+            s.buffer=nb;hp.type='highpass';hp.frequency.value=3500;
+            g.gain.setValueAtTime(0.13*v,ac.currentTime);
+            g.gain.exponentialRampToValueAtTime(0.001,ac.currentTime+0.5);
+            s.connect(hp);hp.connect(g);g.connect(clean);
+            s.start();s.stop(ac.currentTime+0.55);
         }
 
         musStep++;
