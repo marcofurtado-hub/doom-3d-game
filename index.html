@@ -315,14 +315,14 @@ function updateFlashlight(){} // no-op
 
 // Muzzle flash — animates the spiky star mesh at gun tip.
 // flashT is set on shot; render loop scales & fades it out.
+// Color: yellow for bullets, laser color for laser weapons.
 function triggerMuzzleFlash(color){
     if(typeof flashMesh==='undefined')return;
-    flashT=0.1; // ~100ms visibility
-    // Mostly yellow — user asked for "polígonos pontudos amarelos"
-    _flashMat.color.setHex(0xffdd20);
+    flashT=0.1;
+    _flashMat.color.setHex(color);
     _flashMat.opacity=1.0;
     flashMesh.rotation.z=Math.random()*Math.PI*2;
-    flashSize=0.4+Math.random()*0.15; // bigger + random variation
+    flashSize=0.4+Math.random()*0.15;
 }
 function acquireBulletLight(color){return null;}
 function releaseBulletLight(l){}
@@ -1212,8 +1212,9 @@ const _flashMat=new THREE.MeshBasicMaterial({
 });
 const flashMesh=new THREE.Mesh(_flashGeo,_flashMat);
 flashMesh.scale.setScalar(0); // hidden by default
-flashMesh.position.set(0.26,-0.2,-0.95); // at gun tip (camera-local)
-flashMesh.renderOrder=999; // draw last → always visible
+flashMesh.position.set(0.26,-0.2,-0.95);
+flashMesh.renderOrder=999;
+flashMesh.userData.persistent=true; // survive buildFPWeapon child-clear
 fpGun.add(flashMesh);
 let flashT=0,flashSize=0.35;
 function _fpPart(w,h,d,color,px,py,pz,emissive=0){
@@ -1223,12 +1224,15 @@ function _fpPart(w,h,d,color,px,py,pz,emissive=0){
     fpGun.add(m);return m;
 }
 function buildFPWeapon(id){
-    // Dispose old children
+    // Dispose old children, but preserve persistent meshes (like flashMesh)
+    const keep=[];
     while(fpGun.children.length>0){
         const c=fpGun.children[0];fpGun.remove(c);
+        if(c.userData.persistent){keep.push(c);continue;}
         if(c.geometry)c.geometry.dispose();
         if(c.material)c.material.dispose();
     }
+    for(const k of keep)fpGun.add(k); // re-attach after clean
     const X=0.26,Y=-0.22;
     if(id===1){ // PISTOL - small handgun
         _fpPart(0.08,0.08,0.35,0x555555,X,Y,-0.52,0x111111);
@@ -1929,7 +1933,9 @@ function gunTipWorld(){
 function playerShoot(){
     const w=WEAP[pl.wep];
     pl.shotT=w.rate*pl.rateM;sfx[w.sfx]();shake=Math.max(shake,w.sz>0.15?0.3:0.1);
-    triggerMuzzleFlash(w.color);
+    // Muzzle flash: laser weapons use laser color (purple/red),
+    // all other weapons show yellow burst.
+    triggerMuzzleFlash(w.laser?w.color:0xffdd20);
     // Recoil kick works for every weapon (laser/bullet) — small for fast repeats
     const kick=w.sz>0.15?0.18:(w.laser?0.06:0.12);
     fpGun.position.z=kick;
