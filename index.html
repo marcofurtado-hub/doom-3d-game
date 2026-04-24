@@ -142,8 +142,8 @@ body.mobile #crosshair{top:calc(50% - 29px)}
     <div class="panel" id="start-desktop">
         <span class="hd">🎮 controles</span>
         <p>
-        <span class="hl">WASD</span> mover · <span class="hl">MOUSE</span> olhar (yaw + pitch) · <span class="hl">CLICK</span> atirar<br>
-        <span class="hl">1-9</span> trocar arma · <span class="hl">SHIFT</span> dash · <span class="hl">R</span> recarregar · <span class="hl">ESC</span> pausar
+        <span class="hl">WASD</span> mover · <span class="hl">MOUSE</span> olhar · <span class="hl">CLICK</span> atirar · <span class="hl">SPACE</span> pular<br>
+        <span class="hl">1-9</span> ou <span class="hl">ROLL DO MOUSE</span> trocar arma · <span class="hl">SHIFT</span> dash · <span class="hl">R</span> recarregar · <span class="hl">ESC</span> pausar
         </p>
         <span class="hd" style="margin-top:12px">⚔️ como funciona</span>
         <p>
@@ -280,7 +280,7 @@ const scene = new THREE.Scene();
 scene.fog = new THREE.Fog(0x000000, 7, 24); // denser black fog for doom atmosphere
 
 // Camera: first-person view at eye level
-const camera = new THREE.PerspectiveCamera(75, innerWidth/innerHeight, 0.05, 200);
+const camera = new THREE.PerspectiveCamera(82, innerWidth/innerHeight, 0.05, 200);
 camera.position.set(0, 1.45, 0);
 camera.lookAt(1, 1.45, 0);
 scene.add(camera);
@@ -482,6 +482,36 @@ const MAZE_LAYOUTS=[
         {x:10,z:10,w:6,d:1}, // horizontal far top
         {x:21,z:0,w:2,d:2},  // pillar far corner
     ],
+    // Layout 4: Diagonal pillars — pure isolated pillars, no walls trap anyone
+    [
+        {x:6,z:4,w:2,d:2},
+        {x:12,z:-3,w:2,d:2},
+        {x:18,z:5,w:2,d:2},
+        {x:9,z:10,w:2,d:2},
+        {x:20,z:-6,w:2,d:2},
+    ],
+    // Layout 5: Zigzag open alleys — parallel walls with big gaps
+    [
+        {x:6,z:0,w:1,d:8},
+        {x:14,z:4,w:1,d:8},
+        {x:0,z:11,w:10,d:1},
+        {x:22,z:0,w:1,d:6},
+    ],
+    // Layout 6: Cross fields with small blockers
+    [
+        {x:8,z:3,w:1,d:3},
+        {x:8,z:-3,w:1,d:3},
+        {x:15,z:0,w:3,d:1},
+        {x:0,z:10,w:4,d:1},
+        {x:19,z:6,w:1,d:3},
+    ],
+    // Layout 7: Corner posts only — arena feels open with long sightlines
+    [
+        {x:10,z:8,w:2,d:2},
+        {x:18,z:-4,w:2,d:2},
+        {x:5,z:-10,w:2,d:2},
+        {x:20,z:10,w:2,d:2},
+    ],
 ];
 // One shared Lambert material for all inner walls
 innerWallTex.repeat.set(3,WALL_H/TILE_WORLD);
@@ -643,7 +673,19 @@ const lookTouches=new Map();
 function addLook(id,x,y){lookTouches.set(id,{x,y});}
 function removeLook(id){lookTouches.delete(id);}
 
-addEventListener('keydown',e=>{keys[e.key.toLowerCase()]=true;if(e.key==='Escape'&&state==='play'){paused=!paused;$pause.style.display=paused?'flex':'none';if(paused&&document.pointerLockElement)document.exitPointerLock();const bp=document.getElementById('btn-pause');if(bp)bp.textContent=paused?'▶':'II';}});
+addEventListener('keydown',e=>{keys[e.key.toLowerCase()]=true;if(e.key==='Escape'&&state==='play'){paused=!paused;$pause.style.display=paused?'flex':'none';if(paused&&document.pointerLockElement)document.exitPointerLock();const bp=document.getElementById('btn-pause');if(bp)bp.textContent=paused?'▶':'II';}if(e.key===' '&&state==='play'&&!paused)e.preventDefault();/* stop page scroll on space */});
+
+// Mouse wheel cycles through unlocked weapons (forward = next, back = prev)
+addEventListener('wheel',e=>{
+    if(state!=='play'||paused)return;
+    const ks=Object.keys(unlockedWeapons).map(Number).sort((a,b)=>a-b);
+    if(!ks.length)return;
+    const dir=e.deltaY>0?1:-1;
+    const i=Math.max(0,ks.indexOf(pl.wep));
+    pl.wep=ks[(i+dir+ks.length)%ks.length];
+    reloading=false;pl.shotT=0;
+    e.preventDefault();
+},{passive:false});
 addEventListener('keyup',e=>keys[e.key.toLowerCase()]=false);
 addEventListener('mousemove',e=>{
     if(document.pointerLockElement){
@@ -848,7 +890,7 @@ const WEAP={
     4:{name:'ROCKET',rate:0.5,dmg:150,spd:30,spread:0.008,count:1,sz:0.22,color:0xe03818,sfx:'rocket',maxAmmo:15,rTime:1.3,ric:0,expl:true,blast:7},
     5:{name:'PURPLE LASER',rate:0.04,dmg:34,spd:60,spread:0.005,count:1,sz:0.1,color:0xb040ff,sfx:'laser',maxAmmo:300,rTime:1.0,ric:0,laser:true},
     6:{name:'DOUBLE SHOTGUN',rate:0.55,dmg:32,spd:26,spread:0.18,count:12,sz:0.11,color:0xff8030,sfx:'shotgun',maxAmmo:24,rTime:1.1,ric:1},
-    7:{name:'FLAMETHROWER',rate:0.04,dmg:8,spd:14,spread:0.09,count:1,sz:0.18,color:0xff6020,sfx:'molotov',maxAmmo:400,rTime:1.4,ric:0,fireGround:true,life:0.45},
+    7:{name:'FLAMETHROWER',rate:0.04,dmg:22,spd:26,spread:0.12,count:1,sz:0.22,color:0xff6020,sfx:'molotov',maxAmmo:400,rTime:1.4,ric:0,fireGround:true,life:0.9,gravity:true},
     8:{name:'RED LASER',rate:0.03,dmg:68,spd:60,spread:0.006,count:1,sz:0.08,color:0xff2020,sfx:'laser',maxAmmo:250,rTime:0.9,ric:0,laser:true,flat:true},
     9:{name:'NUKE',rate:5,dmg:99999,spd:1,spread:0,count:1,sz:1,color:0xffffff,sfx:'megabomb',maxAmmo:1,rTime:99,ric:0,nuke:true},
 };
@@ -895,8 +937,9 @@ let gameTime=0,paused=false,shake=0,nextBoss=0,volume=50;
 let toSpawn=0,spawnT=0,spawnRate=0,crateT=0;
 
 // Player
-const pl={x:0,z:0,r:0.5,angle:0,pitch:0,hp:20,maxHp:20,spd:10,wep:1,shotT:0,shotBufT:0,dmgM:1,rateM:1,dashCd:0,dashT:0,inv:0,hurtT:0,walkPhase:0,shieldT:0,rageT:0};
+const pl={x:0,z:0,r:0.5,angle:0,pitch:0,hp:20,maxHp:20,spd:10,wep:1,shotT:0,shotBufT:0,dmgM:1,rateM:1,dashCd:0,dashT:0,inv:0,hurtT:0,walkPhase:0,shieldT:0,rageT:0,y:0,vy:0,jumpCd:0};
 const PITCH_MAX=1.35; // ~77° up/down
+const JUMP_V=6.2, GRAVITY=15; // jump velocity & world gravity for player arc
 
 // Entity arrays
 let enemies=[],bullets=[],particles=[],crates=[],pickups=[],firePatches=[];
@@ -1357,7 +1400,7 @@ function mkFirePatch(x,z){
     m.position.set(x,0.06,z);
     m.scale.set(0.8,1,0.8);
     scene.add(m);
-    firePatches.push({alive:true,x,z,r:1.0,life:3.0,mesh:m,dmgPerSec:22,t:Math.random()*6});
+    firePatches.push({alive:true,x,z,r:1.2,life:4.0,mesh:m,dmgPerSec:35,t:Math.random()*6});
 }
 
 function mkPickup(x,z,kind){
@@ -1591,6 +1634,7 @@ function startGame(){
     waveNum=0;score=0;kills=0;combo=0;comboT=0;comboX=1;shake=0;nextBoss=0;gameTime=0;paused=false;
     $pause.style.display='none';
     pl.x=0;pl.z=0;pl.hp=20;pl.maxHp=20;pl.spd=12;pl.wep=1;pl.shotT=0.4;pl.angle=-Math.PI/2;pl.pitch=0;
+    pl.y=0;pl.vy=0;pl.jumpCd=0;
     // Ignore the click/tap that started the game so player doesn't fire immediately
     mDown=false;clicked=false;
     pl.dmgM=1;pl.rateM=1;pl.dashCd=0;pl.dashT=0;pl.inv=0;pl.hurtT=0;pl.walkPhase=0;
@@ -1749,10 +1793,10 @@ function playerShoot(){
         const b=mkBullet(tipX,tipZ,a,w.spd,dmg,w.sz,w.color,false,w.ric||0,tipY,pit);
         b.expl=w.expl||false;b.fire=w.fire||false;b.blast=w.blast||0;
         b.fireGround=w.fireGround||false;
-        if(w.life)b.life=w.life; // flamethrower = short range
+        b.gravity=w.gravity||false; // flamethrower flames arc down with gravity
+        if(w.life)b.life=w.life;
         b.light = acquireBulletLight(w.color);
         bullets.push(b);
-        // Extra fire particles for flamethrower (visual flavor)
         if(w.fireGround)emitP(tipX,tipZ,w.color,2,2);
     }
     // Recoil kick on FP gun
@@ -1980,6 +2024,13 @@ function update(dt){
 
     if(keys['shift']&&pl.dashCd<=0&&(dx||dz)){pl.dashT=0.14;pl.dashCd=0.65;pl.inv=0.18;emitP(pl.x,pl.z,0x30a0b0,4,4);sfx.dash();}
     pl.dashCd=Math.max(0,pl.dashCd-dt);
+    // Jump on Space — only when on the ground (pl.y ~ 0) and not on cooldown.
+    if(keys[' ']&&pl.y<0.01&&pl.jumpCd<=0){pl.vy=JUMP_V;pl.jumpCd=0.32;sfx.dash();}
+    pl.jumpCd=Math.max(0,pl.jumpCd-dt);
+    // Vertical physics — simple ballistic motion, clamp to ground
+    pl.vy-=GRAVITY*dt;
+    pl.y+=pl.vy*dt;
+    if(pl.y<=0){pl.y=0;pl.vy=0;}
     let spd=pl.spd;if(pl.dashT>0){spd=32;pl.dashT-=dt;}
     // dx/dz already have magnitude 0..1 (clamped above). Analog: partial joystick = slower.
     const mvL=Math.hypot(dx,dz);
@@ -2070,6 +2121,8 @@ function update(dt){
                 // no per-frame particles — too costly
             }
         }
+        // Fake gravity for flamethrower flames — creates a physics-like arc
+        if(b.gravity)b.vy=(b.vy||0)-22*dt;
         b.x+=b.vx*dt;b.z+=b.vz*dt;b.y+=(b.vy||0)*dt;b.life-=dt;
         if(b.life<=0){b.alive=false;scene.remove(b.mesh);returnBulletToPool(b.mesh);if(b.light){releaseBulletLight(b.light);b.light=null;}continue;}
         // Wall ricochet - all 6 faces of the arena box
@@ -2483,7 +2536,7 @@ function loop(t){
     const pit=state==='play'?pl.pitch:0;
     const bobY=state==='play'?Math.sin(pl.walkPhase)*0.05:0;
     const bobX=state==='play'?Math.cos(pl.walkPhase*0.5)*0.03:0;
-    const eyeY=1.45+bobY+(pl.hurtT>0?-0.02:0);
+    const eyeY=1.45+bobY+(pl.hurtT>0?-0.02:0)+(state==='play'?pl.y:0);
     const rX=-Math.sin(ang),rZ=Math.cos(ang);
     let cx=px+rX*bobX, cy=eyeY, cz=pz+rZ*bobX;
     if(shake>0){cx+=(Math.random()-0.5)*shake*0.6;cy+=(Math.random()-0.5)*shake*0.4;cz+=(Math.random()-0.5)*shake*0.6;}
