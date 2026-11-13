@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { P, box, cone, cyl, ball, merge, both } from './geo.js';
+import { asset, ATLAS } from './textures.js';
 
 // Enemy definitions — 5+ types with distinct silhouettes and behavior.
 
@@ -241,7 +242,39 @@ function template(key) {
     return _templates.get(key);
 }
 
+// Billboard enemies drawn from a painted sprite strip (classic 2D monsters in a 3D world)
+const SPRITES = {
+    imp: { height: 2.75, centered: false, walk: [1, 0, 2, 0], attack: 3, pain: 4, dead: 5 },
+    skull: { height: 2.9, centered: true, walk: [0], attack: 1, pain: 2, dead: 3 },
+    demon: { height: 2.6, centered: false, walk: [1, 0, 2, 0], attack: 3, pain: 4, dead: 5 },
+    baron: { height: 3.6, centered: false, walk: [1, 0, 2, 0], attack: 3, pain: 4, dead: 5 },
+    revenant: { height: 3.4, centered: false, walk: [1, 0, 2, 0], attack: 3, pain: 4, dead: 5 },
+    cyber: { height: 3.9, centered: false, walk: [1, 0, 2, 0], attack: 3, pain: 4, dead: 5 },
+    caco: { height: 2.5, centered: true, walk: [0], attack: 1, pain: 2, dead: 3 },
+    spider: { height: 3.2, centered: false, walk: [0, 1], attack: 2, pain: 0, dead: 3 },
+};
+function buildSpriteEnemy(def, cfg, isBoss) {
+    const info = ATLAS[def.build], tex = asset(def.build).clone();
+    tex.needsUpdate = true;
+    tex.repeat.set(1 / info.frames, 1);
+    const mat = new THREE.SpriteMaterial({ map: tex, alphaTest: 0.5 });
+    const sp = new THREE.Sprite(mat);
+    sp.scale.set(cfg.height * info.w / info.h, cfg.height, 1);
+    sp.center.set(0.5, cfg.centered ? 0.5 : 0);
+    const g = new THREE.Group();
+    g.add(sp);
+    if (!def.flying) {
+        const sh = new THREE.Mesh(_shadowGeo, _shadowMat);
+        sh.position.y = 0.03 / def.r; sh.scale.setScalar(0.8); sh.renderOrder = 2;
+        g.add(sh);
+    }
+    g.userData = { legs: [], arms: [], flash: [], mats: [mat, tex], height: cfg.height * def.r, sprite: { ...cfg, tex, mat, frames: info.frames } };
+    g.scale.setScalar(def.r * (isBoss ? 1.15 : 1));
+    return g;
+}
+
 export function buildEnemyMesh(def, isBoss = false) {
+    if (SPRITES[def.build] && asset(def.build)) return buildSpriteEnemy(def, SPRITES[def.build], isBoss);
     const t = template(def.build);
     const col = new THREE.Color(def.col);
     const mats = {
