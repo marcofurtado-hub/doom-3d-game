@@ -54,22 +54,34 @@ function set(o, r, g, b, er = 0, eg = 0, eb = 0, h = 0.5) {
 // ---------------------------------------------------------------- designs
 const DESIGNS = {
     infernal: {
+        size: 64,
+        // Flagstones, 32px slabs: mottled grey-brown stone, dark grout, the odd crack and old blood
         floor(u, v, o) {
-            const n = fbm(u, v, 5, 8, 11);
-            const c = ridge(fbm(u, v, 3, 4, 23), 22);
-            const lava = sstep(0.6, 0.95, c);
-            const rock = (0.35 + n * 0.65) * (1 - 0.7 * sstep(0.1, 0.6, c));
-            const glow = c * c * c;
-            set(o, 62 * rock + 110 * lava, 44 * rock + 26 * lava, 42 * rock,
-                255 * lava + 70 * glow, 100 * lava + 8 * glow, 14 * lava, 0.3 + n * 0.6 - lava * 0.5);
+            const x = Math.floor(u * 64) & 63, y = Math.floor(v * 64) & 63;
+            const row = y >> 5, xo = (x + (row ? 16 : 0)) & 63, col = xo >> 5, bx = xo & 31, by = y & 31;
+            if (bx === 0 || by === 0) { set(o, 30, 24, 24); return; }
+            const h = hash(col, row, 5), sp = hash(x, y, 9);
+            const T = [[72, 62, 58], [86, 73, 66], [62, 54, 52], [78, 64, 56]][Math.floor(h * 4)];
+            let k = 1;
+            if (by === 31 || bx === 1) k += 0.14; if (by === 1 || bx === 31) k -= 0.16;
+            if (sp > 0.88) k -= 0.14; else if (sp < 0.1) k += 0.1;
+            if (h > 0.55 && Math.abs(bx - by * 0.6 - 6 - h * 8) < 0.8) k -= 0.4;
+            let r = T[0] * k, g = T[1] * k, b = T[2] * k;
+            if (fbm(u, v, 2, 4, 5) > 0.66 && sp > 0.25) { r = r * 0.5 + 52; g *= 0.32; b *= 0.3; }
+            set(o, r, g, b);
         },
+        // Bricks, 16x8px: three tones, bevelled top edge, chipped pixels, a few scorched ones
         wall(u, v, o) {
-            const k = cells(u, v, 4, 8);
-            const n = fbm(u, v, 4, 8, 5);
-            const mortar = 1 - sstep(0.004, 0.012, k.d);
-            const tone = (0.5 + 0.5 * hash(k.col, k.row, 3)) * (0.55 + 0.45 * n) * (1 - mortar);
-            const hot = mortar * sstep(0.56, 0.72, fbm(u, v, 3, 4, 41));
-            set(o, 74 * tone + 12, 50 * tone + 8, 52 * tone + 8, 255 * hot, 85 * hot, 12 * hot, (1 - mortar) * (0.6 + 0.4 * n));
+            const x = Math.floor(u * 64) & 63, y = Math.floor(v * 64) & 63;
+            const row = y >> 3, xo = (x + ((row & 1) ? 8 : 0)) & 63, col = xo >> 4, bx = xo & 15, by = y & 7;
+            if (bx === 0 || by === 0) { set(o, 34, 20, 20); return; }
+            const h = hash(col, row, 3), sp = hash(x, y, 11);
+            const T = [[98, 50, 38], [120, 62, 44], [138, 78, 54]][h < 0.3 ? 0 : h < 0.78 ? 1 : 2];
+            let k = 1;
+            if (by === 7) k += 0.16; if (by === 1) k -= 0.16; if (bx === 15) k -= 0.1; if (bx === 1) k += 0.07;
+            if (sp > 0.9) k -= 0.14; else if (sp < 0.07) k += 0.1;
+            if (hash(col, row, 21) > 0.9) k *= 0.5;
+            set(o, T[0] * k, T[1] * k, T[2] * k);
         },
     },
     tech: {
@@ -229,63 +241,150 @@ const DESIGNS = {
 };
 
 // ---------------------------------------------------------------- baking
-function bake(fn, size, withNormal) {
+function nearest(t, srgb = true, mips = true) {
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.magFilter = THREE.NearestFilter;
+    t.minFilter = mips ? THREE.NearestMipmapNearestFilter : THREE.NearestFilter;
+    t.generateMipmaps = mips;
+    t.anisotropy = 1;
+    if (srgb) t.colorSpace = THREE.SRGBColorSpace;
+    return t;
+}
+
+function bake(fn, size) {
     const mk = () => { const c = document.createElement('canvas'); c.width = c.height = size; return c; };
     const cA = mk(), cE = mk();
     const gA = cA.getContext('2d'), gE = cE.getContext('2d');
     const iA = gA.createImageData(size, size), iE = gE.createImageData(size, size);
-    const H = new Float32Array(size * size);
     const o = new Float32Array(7);
+    let glow = false;
     for (let y = 0; y < size; y++) {
         const v = 1 - (y + 0.5) / size;
         for (let x = 0; x < size; x++) {
+            o[3] = o[4] = o[5] = 0;
             fn((x + 0.5) / size, v, o);
             const i = (y * size + x) * 4;
             iA.data[i] = o[0]; iA.data[i + 1] = o[1]; iA.data[i + 2] = o[2]; iA.data[i + 3] = 255;
             iE.data[i] = o[3]; iE.data[i + 1] = o[4]; iE.data[i + 2] = o[5]; iE.data[i + 3] = 255;
-            H[y * size + x] = o[6];
+            if (o[3] + o[4] + o[5] > 8) glow = true;
         }
     }
     gA.putImageData(iA, 0, 0); gE.putImageData(iE, 0, 0);
-    const tex = (c, srgb) => {
-        const t = new THREE.CanvasTexture(c);
-        t.wrapS = t.wrapT = THREE.RepeatWrapping;
-        t.anisotropy = 4;
-        if (srgb) t.colorSpace = THREE.SRGBColorSpace;
-        return t;
-    };
-    const out = { map: tex(cA, true), emissiveMap: tex(cE, true), normalMap: null };
-    if (withNormal) {
-        const cN = mk(), gN = cN.getContext('2d'), iN = gN.createImageData(size, size);
-        const S = 3.0;
-        for (let y = 0; y < size; y++) {
-            const yu = (y - 1 + size) % size, yd = (y + 1) % size;
-            for (let x = 0; x < size; x++) {
-                const xl = (x - 1 + size) % size, xr = (x + 1) % size;
-                const nx = -(H[y * size + xr] - H[y * size + xl]) * S;
-                const ny = -(H[yu * size + x] - H[yd * size + x]) * S;
-                const l = Math.hypot(nx, ny, 1), i = (y * size + x) * 4;
-                iN.data[i] = (nx / l * 0.5 + 0.5) * 255;
-                iN.data[i + 1] = (ny / l * 0.5 + 0.5) * 255;
-                iN.data[i + 2] = (1 / l * 0.5 + 0.5) * 255;
-                iN.data[i + 3] = 255;
-            }
-        }
-        gN.putImageData(iN, 0, 0);
-        out.normalMap = tex(cN, false);
-    }
-    return out;
+    return { map: nearest(new THREE.CanvasTexture(cA)), emissiveMap: glow ? nearest(new THREE.CanvasTexture(cE)) : null };
 }
 
-// Returns { floor: {map, emissiveMap, normalMap}, wall: {...} }, cached per biome + quality.
-export function biomeTextures(id, low = false) {
-    const key = id + (low ? ':low' : '');
-    if (!_cache.has(key)) {
-        const d = DESIGNS[id];
-        _cache.set(key, {
-            floor: bake(d.floor, low ? 256 : 512, !low),
-            wall: bake(d.wall, low ? 128 : 256, !low),
-        });
+// Returns { floor: {map, emissiveMap}, wall: {...} } at chunky texel sizes, cached per biome.
+export function biomeTextures(id) {
+    if (!_cache.has(id)) {
+        const d = DESIGNS[id], size = d.size || 128;
+        _cache.set(id, { floor: bake(d.floor, size), wall: bake(d.wall, size) });
     }
-    return _cache.get(key);
+    return _cache.get(id);
+}
+
+// ---------------------------------------------------------------- pixel-art extras
+// fn(x, y, out) with y = 0 at the bottom; out = [r, g, b, a]
+function pix(key, w, h, fn, mips = false) {
+    if (_cache.has(key)) return _cache.get(key);
+    const c = document.createElement('canvas'); c.width = w; c.height = h;
+    const g = c.getContext('2d'), img = g.createImageData(w, h), o = [0, 0, 0, 255];
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+        o[0] = o[1] = o[2] = 0; o[3] = 255;
+        fn(x, h - 1 - y, o);
+        const i = (y * w + x) * 4;
+        img.data[i] = o[0]; img.data[i + 1] = o[1]; img.data[i + 2] = o[2]; img.data[i + 3] = o[3];
+    }
+    g.putImageData(img, 0, 0);
+    const t = nearest(new THREE.CanvasTexture(c), true, mips);
+    _cache.set(key, t);
+    return t;
+}
+const bayer4 = (x, y) => [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5][(x & 3) + (y & 3) * 4] / 16;
+
+// Lava: four hard colour bands, scrolled by the arena
+export function lavaTexture() {
+    return pix('lava', 64, 64, (x, y, o) => {
+        const n = fbm(x / 64, y / 64, 3, 4, 131) + (bayer4(x, y) - 0.5) * 0.05;
+        const c = n > 0.62 ? [255, 226, 90] : n > 0.53 ? [248, 140, 24] : n > 0.44 ? [196, 52, 12] : [84, 20, 12];
+        o[0] = c[0]; o[1] = c[1]; o[2] = c[2];
+    }, true);
+}
+
+// Carved demon face on a stone slab, eyes lit
+export function facePanel() {
+    return pix('face', 64, 64, (x, y, o) => {
+        const sp = hash(x, y, 41);
+        let r = 96, g = 86, b = 84, k = 1 + (sp > 0.85 ? -0.12 : sp < 0.1 ? 0.08 : 0);
+        const e = Math.min(x, y, 63 - x, 63 - y);
+        if (e < 1) k = 0.45; else if (e < 3) k *= (x < 3 || y > 60) ? 1.25 : 0.7;
+        const cx = (x - 31.5) / 32, cy = (y - 29) / 32, ax = Math.abs(cx);
+        const head = (cx * cx) / 0.3 + ((cy - 0.02) * (cy - 0.02)) / 0.36 < 1;
+        const hy = (cy - 0.42) / 0.5;
+        const horn = hy > 0 && hy < 1 && Math.abs(ax - 0.42 - hy * 0.26) < 0.13 * (1 - hy) + 0.02;
+        if (head || horn) { r = 128; g = 112; b = 104; k *= 1.05 - cx * 0.28 + (cy > 0.3 ? 0.08 : 0); }
+        if (head) {
+            const ex = ax - 0.23, ey = cy - 0.12 - ax * 0.25;
+            if ((ex * ex) / 0.018 + (ey * ey) / 0.006 < 1) {
+                const core = Math.abs(ex) < 0.04;
+                o[0] = 255; o[1] = core ? 220 : 50; o[2] = core ? 90 : 20; return;
+            }
+            if (ey > 0.06 && ey < 0.11 && ax > 0.08 && ax < 0.4) k *= 0.6;                     // brow
+            if (ax > 0.02 && ax < 0.07 && cy > -0.16 && cy < -0.08) k *= 0.35;                 // nostrils
+            if (ax < 0.34 && cy > -0.44 && cy < -0.24) {                                       // mouth
+                const tooth = (x % 4 < 2) && (cy > -0.3 || cy < -0.38);
+                if (tooth) { r = 214; g = 204; b = 176; k = 1; } else { r = 26; g = 8; b = 8; k = 1; }
+            }
+        }
+        o[0] = r * k; o[1] = g * k; o[2] = b * k;
+    }, true);
+}
+
+// Summoning circle for the arena centre (transparent outside the lines)
+export function pentagramTexture() {
+    const V = [];
+    for (let i = 0; i < 5; i++) { const a = Math.PI / 2 + i * Math.PI * 4 / 5; V.push([32 + Math.cos(a) * 27, 32 + Math.sin(a) * 27]); }
+    const seg = (px, py, a, b) => {
+        const dx = b[0] - a[0], dy = b[1] - a[1];
+        const t = Math.max(0, Math.min(1, ((px - a[0]) * dx + (py - a[1]) * dy) / (dx * dx + dy * dy)));
+        return Math.hypot(px - a[0] - dx * t, py - a[1] - dy * t);
+    };
+    return pix('penta', 64, 64, (x, y, o) => {
+        const d = Math.hypot(x - 32, y - 32);
+        let on = Math.abs(d - 29.5) < 1 || Math.abs(d - 26) < 0.6;
+        for (let i = 0; i < 5 && !on; i++) on = seg(x, y, V[i], V[(i + 1) % 5]) < 0.9;
+        if (!on) { o[3] = 0; return; }
+        const k = hash(x, y, 7) > 0.8 ? 0.6 : 1;
+        o[0] = 200 * k; o[1] = 22 * k; o[2] = 14 * k;
+    });
+}
+
+// Hell sky strip for a cylinder around the arena: dithered red gradient, cloud streaks, two mountain ranges
+export function skyPanorama() {
+    const W = 256, H = 96;
+    const ridge1 = x => 22 + 16 * fbm(x / W, 0.3, 4, 6, 201) + 8 * Math.abs(Math.sin(x / W * Math.PI * 10));
+    const ridge2 = x => 10 + 20 * fbm(x / W, 0.7, 4, 5, 207);
+    return pix('sky', W, H, (x, y, o) => {
+        if (y < ridge2(x)) { o[0] = 22; o[1] = 5; o[2] = 8; return; }
+        if (y < ridge1(x)) { const k = y > ridge1(x) - 2 ? 1.5 : 1; o[0] = 62 * k; o[1] = 12 * k; o[2] = 14 * k; return; }
+        const t = Math.min(1, (y - 18) / (H - 18)), steps = 9;
+        const q = Math.min(steps - 1, Math.floor((1 - t) * steps + bayer4(x, y) * 0.9)) / (steps - 1); // 1 at horizon
+        let r = 28 + 212 * q * q, g = 4 + 104 * q * q * q, b = 8 + 16 * q;
+        const cl = fbm(x / W, y / H, 4, 6, 211, 12);
+        if (cl > 0.57 + bayer4(x, y) * 0.08) { r = r * 0.6 + 26; g = g * 0.5 + 4; b = b * 0.5 + 8; }
+        else if (t > 0.45 && hash(x, y, 13) > 0.992) { r = 255; g = 210; b = 150; }
+        o[0] = r; o[1] = g; o[2] = b;
+    });
+}
+
+// Four 16x24 flame frames in one strip
+export function flameStrip() {
+    return pix('flame', 64, 24, (X, y, o) => {
+        const f = X >> 4, x = X & 15, q = y / 23;
+        const cx = 7.5 + Math.sin(y * 0.55 + f * 2.1) * 1.6 * q;
+        const w = 5.6 * Math.pow(1 - q, 0.75) + Math.sin(y * 0.8 + f * 1.7) * 1.0 * q;
+        const d = Math.abs(x - cx) / Math.max(0.01, w);
+        if (d > 1 || (q > 0.6 && hash(x, y, 50 + f) > 0.75)) { o[3] = 0; return; }
+        const c = d < 0.4 && q < 0.5 ? [255, 244, 150] : d < 0.75 && q < 0.75 ? [255, 160, 30] : [214, 56, 12];
+        o[0] = c[0]; o[1] = c[1]; o[2] = c[2];
+    });
 }

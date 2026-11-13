@@ -6,17 +6,17 @@ import { biomeTextures } from './textures.js';
 
 export const BIOMES = [
     {
-        id: 'infernal', trim: 0x2a1616, name: 'INFERNAL KEEP', sub: 'brimstone · obsidian · lava',
-        fogColor: 0x2a0806, fogNear: 12, fogFar: 52, skyColor: 0x100206, openSky: false,
-        hemiSky: 0xb08878, hemiGround: 0x5a2010, hemiIntensity: 2.1,
-        sunColor: 0xffa070, sunIntensity: 1.6, sunDir: [10, 20, 8],
-        rimColor: 0xff4018, rimIntensity: 60,
+        id: 'infernal', trim: 0x3a2a26, name: 'INFERNAL KEEP', sub: 'tijolo · lava · enxofre',
+        keep: true, tile: 2, openSky: true,
+        fogColor: 0x1a0606, fogNear: 6, fogFar: 46, skyColor: 0x100206,
+        hemiSky: 0xfff0e4, hemiGround: 0x8a6858, hemiIntensity: 2.9,
+        sunColor: 0xffe0c0, sunIntensity: 1.2, sunDir: [10, 20, 8],
+        rimColor: 0xff6030, rimIntensity: 14,
         accent: 0xff6a28,
-        floor: { roughness: 0.75, metalness: 0.1, glow: 1.5 },
-        wall: { roughness: 0.8, metalness: 0.05, glow: 1.4 },
+        floor: { glow: 0 }, wall: { glow: 0 },
         ceilColor: 0x1a0806,
-        embers: { count: 70, color: 0xff7a20, rise: true, speed: 0.5 },
-        props: { type: 'flame', color: 0xff6a18, spacing: 7 },
+        embers: { count: 50, color: 0xff7a20, rise: true, speed: 0.5 },
+        props: null,
         audioAmbient: { base: 50, lead: 80, texture: 'rumble' },
     },
     {
@@ -112,14 +112,14 @@ export function biomeForWave(wave) {
     return BIOMES[(wave - 1) % BIOMES.length];
 }
 
-export function buildSurfaceMaterial(biome, which, low) {
-    const t = biomeTextures(biome.id, low)[which];
-    const cfg = biome[which];
-    return new THREE.MeshStandardMaterial({
+// Retro surfaces: Lambert lighting, nearest-filtered textures, glow only where the emissive map says so.
+export function buildSurfaceMaterial(biome, which) {
+    const t = biomeTextures(biome.id)[which];
+    return new THREE.MeshLambertMaterial({
         map: t.map,
-        emissiveMap: t.emissiveMap, emissive: 0xffffff, emissiveIntensity: cfg.glow,
-        normalMap: t.normalMap, normalScale: new THREE.Vector2(1.2, 1.2),
-        roughness: cfg.roughness, metalness: cfg.metalness,
+        emissiveMap: t.emissiveMap,
+        emissive: t.emissiveMap ? 0xffffff : 0x000000,
+        emissiveIntensity: Math.min(1, biome[which].glow * 0.45),
     });
 }
 

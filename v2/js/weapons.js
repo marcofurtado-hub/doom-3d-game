@@ -19,15 +19,13 @@ export const WC = 9;
 // ===== WEAPON MODELS =====
 // Same kit as the enemies: primitives merged per material, so a gun is 3-5 draw calls.
 // Guns point down -Z; userData.muzzle is the barrel tip in model space.
-let _env = null;
-export function setWeaponEnvMap(tex) { _env = tex; }
 
 function mats(tint, glowColor) {
     return {
-        metal: new THREE.MeshStandardMaterial({ color: tint, roughness: 0.38, metalness: 0.75, envMap: _env, envMapIntensity: 1.1 }),
-        dark: new THREE.MeshStandardMaterial({ color: 0x2c2e34, roughness: 0.5, metalness: 0.6, envMap: _env, envMapIntensity: 0.8 }),
-        wood: new THREE.MeshStandardMaterial({ color: 0x7a4a26, roughness: 0.8, metalness: 0, flatShading: true }),
-        glow: new THREE.MeshStandardMaterial({ color: 0x000000, emissive: glowColor, emissiveIntensity: 2.2, roughness: 1 }),
+        metal: new THREE.MeshLambertMaterial({ color: tint, flatShading: true }),
+        dark: new THREE.MeshLambertMaterial({ color: 0x3c3e46, flatShading: true }),
+        wood: new THREE.MeshLambertMaterial({ color: 0x7a4a26, flatShading: true }),
+        glow: new THREE.MeshLambertMaterial({ color: 0x000000, emissive: glowColor, emissiveIntensity: 1, flatShading: true }),
     };
 }
 function assemble(parts, tint, glowColor, muzzle, glowAnim = null) {
@@ -48,7 +46,7 @@ const WEAP_BUILDERS = {
         metal: [P(box(0.085, 0.08, 0.36), 0, 0.07, -0.03), P(box(0.02, 0.022, 0.02), 0, 0.12, -0.19), P(box(0.05, 0.02, 0.02), 0, 0.12, 0.12)],
         dark: [P(box(0.08, 0.07, 0.26), 0, 0.0, 0.02), P(cyl(0.024, 0.024, 0.05, 8), 0, 0.072, -0.22, H), P(box(0.02, 0.02, 0.1), 0, -0.055, -0.03), P(box(0.02, 0.06, 0.02), 0, -0.04, 0.0)],
         wood: [grip(0.1, -0.13)],
-    }, 0x8a8e98, 0xffd040, [0, 0.072, -0.25]),
+    }, 0x6a6e78, 0xffd040, [0, 0.072, -0.25]),
 
     2: () => assemble({
         metal: [P(box(0.1, 0.13, 0.36), 0, 0.0, 0.04), P(box(0.02, 0.016, 0.62), 0, 0.085, -0.42)],
@@ -82,7 +80,7 @@ const WEAP_BUILDERS = {
         metal: [P(box(0.12, 0.15, 0.42), 0, 0, 0.02), P(box(0.14, 0.04, 0.2), 0, 0.09, 0.06)],
         dark: [P(cyl(0.04, 0.04, 0.42, 8), 0, 0.01, -0.36, H), P(cone(0.06, 0.1, 8), 0, 0.01, -0.6, H), grip(0.1, -0.16), ...both(s => P(box(0.012, 0.08, 0.3), s * 0.066, 0, 0.0))],
         glow: [-0.24, -0.34, -0.44].map(z => P(cyl(0.07, 0.07, 0.03, 10), 0, 0.01, z, H)).concat([P(box(0.06, 0.012, 0.14), 0, 0.112, 0.06)]),
-    }, 0x48607a, 0x40d8ff, [0, 0.01, -0.64], { base: 2.0, amp: 0.7, speed: 0.01, fire: 1.2 }),
+    }, 0x48607a, 0x40d8ff, [0, 0.01, -0.64], { base: 0.8, amp: 0.2, speed: 0.01, fire: 0.4 }),
 
     6: () => assemble({
         metal: [P(cyl(0.12, 0.12, 0.2, 8), 0, 0, -0.02, H), P(box(0.07, 0.1, 0.24), 0, 0, 0.2)],
@@ -96,9 +94,9 @@ const WEAP_BUILDERS = {
             wood: [P(box(0.1, 0.1, 0.13), 0, -0.1, -0.06), P(cyl(0.045, 0.05, 0.3, 6), 0, -0.2, 0.1, 0.9)],
             dark: [P(cyl(0.024, 0.03, 0.08, 8), 0, 0.2, -0.1)],
             glow: [P(cone(0.035, 0.13, 5), 0, 0.3, -0.1), P(cone(0.02, 0.08, 4), 0.02, 0.33, -0.08, 0, 0, -0.3)],
-        }, 0x808080, 0xff7a20, [0, 0.28, -0.14], { base: 2.4, amp: 1.2, speed: 0.03, fire: 0 });
+        }, 0x808080, 0xff7a20, [0, 0.28, -0.14], { base: 0.8, amp: 0.2, speed: 0.03, fire: 0 });
         const bottle = new THREE.Mesh(merge([P(cyl(0.055, 0.062, 0.24, 8), 0, 0.05, -0.1), P(cone(0.055, 0.05, 8), 0, 0.19, -0.1)]),
-            new THREE.MeshStandardMaterial({ color: 0x4a9a50, emissive: 0x7a3a08, emissiveIntensity: 0.5, roughness: 0.15, metalness: 0.1, transparent: true, opacity: 0.8, envMap: _env }));
+            new THREE.MeshLambertMaterial({ color: 0x4a9a50, emissive: 0x7a3a08, emissiveIntensity: 0.5, flatShading: true }));
         g.add(bottle);
         return g;
     },
@@ -107,7 +105,7 @@ const WEAP_BUILDERS = {
         metal: [P(box(0.075, 0.1, 0.38), 0, 0, 0.02), P(box(0.05, 0.03, 0.12), 0, 0.075, 0.12)],
         dark: [...both(s => P(box(0.014, 0.03, 0.52), s * 0.048, 0.02, -0.22)), P(cyl(0.03, 0.03, 0.1, 8), 0, 0.0, -0.22, H), grip(0.1, -0.13), P(box(0.1, 0.014, 0.03), 0, 0.02, -0.46)],
         glow: [P(ball(0.028, 1), 0, 0.02, -0.44), P(box(0.02, 0.012, 0.3), 0, 0.058, -0.05), P(box(0.012, 0.012, 0.36), 0, 0.02, -0.26)],
-    }, 0x7a4048, 0xff2030, [0, 0.02, -0.5], { base: 2.0, amp: 0.3, speed: 0.02, fire: 3 }),
+    }, 0x7a4048, 0xff2030, [0, 0.02, -0.5], { base: 0.8, amp: 0.2, speed: 0.02, fire: 0.4 }),
 
     9: () => assemble({
         metal: [P(cyl(0.15, 0.19, 0.42, 8), 0, 0, 0.08, H), P(cyl(0.17, 0.15, 0.08, 8), 0, 0, -0.16, H), P(box(0.1, 0.06, 0.3), 0, 0.17, 0.08)],
@@ -116,21 +114,26 @@ const WEAP_BUILDERS = {
             P(cyl(0.2, 0.2, 0.05, 8), 0, 0, 0.3, H), grip(0.12, -0.24), grip(-0.14, -0.22),
         ],
         glow: [P(ball(0.105, 1), 0, 0, -0.3), P(box(0.05, 0.014, 0.2), 0, 0.203, 0.08), ...[0.52, 2.62, 4.71].map(a => P(box(0.016, 0.016, 0.36), Math.cos(a) * 0.118, Math.sin(a) * 0.118, -0.34))],
-    }, 0x4a7a4a, 0x70ff40, [0, 0, -0.58], { base: 2.4, amp: 1.0, speed: 0.006, fire: 2 }),
+    }, 0x4a7a4a, 0x70ff40, [0, 0, -0.58], { base: 0.8, amp: 0.2, speed: 0.006, fire: 0.4 }),
 };
 
 export function buildWeaponModel(k) { return WEAP_BUILDERS[k](); }
 
 // ===== WEAPON VIEW (first-person) =====
 // Child of the camera at half scale and half distance: same on-screen size, but it no longer pokes through walls.
-const BASE_LIGHT = 0.9;
+const BASE_LIGHT = 0.5;
 
 export class WeaponView {
     constructor(camera) {
         this.root = new THREE.Group();
-        this.root.scale.setScalar(0.42);
+        this.root.scale.setScalar(0.5);
         camera.add(this.root);
-        this.basePos = new THREE.Vector3(0.155, -0.14, -0.3);
+        this.basePos = new THREE.Vector3(0, -0.125, -0.36);
+        // Marine's arms, shared by every gun: gloves on the grip, sleeves running off the bottom of the screen
+        const glove = [P(box(0.13, 0.13, 0.15), 0.03, -0.13, 0.12), P(box(0.13, 0.11, 0.14), -0.08, -0.17, 0.06, 0, 0.3, 0)];
+        const sleeve = [P(box(0.13, 0.13, 0.7), 0.2, -0.3, 0.44, 0.45, 0.45, 0), P(box(0.13, 0.13, 0.7), -0.25, -0.34, 0.38, 0.45, -0.45, 0)];
+        this.root.add(new THREE.Mesh(merge(glove), new THREE.MeshLambertMaterial({ color: 0x5a4630, flatShading: true })));
+        this.root.add(new THREE.Mesh(merge(sleeve), new THREE.MeshLambertMaterial({ color: 0x4a7a3a, flatShading: true })));
         this.cache = {};
         this.current = null;
         this.currentKey = 0;
@@ -144,7 +147,7 @@ export class WeaponView {
 
         // Fill light (PBR gun needs a direct light in dark biomes); doubles as the muzzle flash light.
         this.light = new THREE.PointLight(0xfff0d8, BASE_LIGHT, 9, 2);
-        this.light.position.set(0.35, 0.3, 0.25);
+        this.light.position.set(0.2, 0.35, 0.25);
         camera.add(this.light);
         this._base = new THREE.Color(0xfff0d8);
         this._flashCol = new THREE.Color();
@@ -168,7 +171,7 @@ export class WeaponView {
         if (def.flash > 0) {
             this.flashT = 0.055;
             this.flashSize = def.flash;
-            this.flash.material.color.set(def.color).multiplyScalar(1.5);
+            this.flash.material.color.set(def.color);
             this.flash.rotation.set(Math.random() * 6, Math.random() * 6, Math.random() * 6);
             this._flashCol.set(def.color);
         }
@@ -184,7 +187,7 @@ export class WeaponView {
             this.basePos.x + swayX,
             this.basePos.y + swayY - this.raise * 0.25 - this.dip * 0.1,
             this.basePos.z + this.kick * 0.07);
-        this.root.rotation.set(swayY * 1.5 + this.kick * 0.3 - this.raise * 0.9 - this.dip * 0.5, -swayX * 1.5 + 0.03, this.dip * 0.5);
+        this.root.rotation.set(0.2 + swayY * 1.5 + this.kick * 0.3 - this.raise * 0.9 - this.dip * 0.5, -swayX * 1.5, this.dip * 0.5);
 
         if (this.flashT > 0) {
             this.flashT -= dt;
@@ -220,7 +223,7 @@ const _ball = new THREE.SphereGeometry(1, 8, 6);
 const _mats = new Map();
 export function glowMaterial(color, boost = 2.2) {
     const key = color + ':' + boost;
-    if (!_mats.has(key)) _mats.set(key, new THREE.MeshBasicMaterial({ color: new THREE.Color(color).multiplyScalar(boost) }));
+    if (!_mats.has(key)) _mats.set(key, new THREE.MeshBasicMaterial({ color: new THREE.Color(color).lerp(new THREE.Color(0xffffff), 0.25) }));
     return _mats.get(key);
 }
 

@@ -68,7 +68,7 @@ export class HUD {
         const s = Math.floor(time % 60);
         this._set('time', $.time, Math.floor(time / 60) + ':' + (s < 10 ? '0' : '') + s);
         this._set('hp', $.hp, Math.max(0, Math.ceil(a.hp - 0.01)));
-        this._set('armor', $.armor, pl.armor > 0 ? '◆ ' + Math.ceil(pl.armor) : '');
+        this._set('armor', $.armor, Math.ceil(pl.armor));
 
         const def = WEAP[pl.wep];
         this._set('ammo', $.ammo, pl.reloading ? '···' : def.maxAmmo === Infinity ? '∞' : pl.ammo[pl.wep]);
@@ -79,7 +79,7 @@ export class HUD {
         if (this.last.pct !== pk) {
             this.last.pct = pk;
             $.hpBar.style.width = pk + '%';
-            $.hpBar.style.background = `hsl(${pct * 120}, 85%, 48%)`;
+            $.hpBar.style.background = pct > 0.6 ? '#3aa02a' : pct > 0.3 ? '#d0a020' : '#d81c0c';
             $.hp.classList.toggle('low', pct < 0.3);
         }
         const sk = pl.wep + ':' + Object.keys(pl.unlocked).join('');

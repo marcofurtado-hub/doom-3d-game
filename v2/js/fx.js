@@ -108,8 +108,10 @@ export class FX {
         cam.updateMatrixWorld();
 
         const lx = Math.max(-40, Math.min(40, pl.lookDx || 0)), ly = Math.max(-40, Math.min(40, pl.lookDy || 0));
-        this.swayX += (-lx * 0.0012 - bobX * 0.4 - this.swayX) * Math.min(1, dt * 10);
-        this.swayY += (ly * 0.0012 - bobY * 0.35 - this.swayY) * Math.min(1, dt * 10);
+        // Classic gun bob: a wide side-to-side arc that dips at the ends
+        const wbx = Math.cos(this.bobPhase * 0.5) * 0.028 * this.bobAmp, wby = -Math.abs(Math.sin(this.bobPhase * 0.5)) * 0.016 * this.bobAmp;
+        this.swayX += (-lx * 0.0006 + wbx - this.swayX) * Math.min(1, dt * 12);
+        this.swayY += (ly * 0.0006 + wby - this.swayY) * Math.min(1, dt * 12);
 
         const u = this.renderer.fx;
         u.uHurt.value = this.hurt;

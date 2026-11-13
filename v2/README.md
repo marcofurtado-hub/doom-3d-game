@@ -5,26 +5,33 @@ kill-heal, roguelike), new renderer, new art, a different biome every wave.
 
 Entry point: `v2/index.html` (static, no build step). v1 at the repo root is untouched.
 
+## Look: retro on purpose
+
+The whole frame is rendered into a ~240-line buffer and stretched with nearest-neighbour, then quantised with
+ordered (Bayer) dithering. No bloom, no antialiasing, no shadow maps. Textures are 64px pixel art with nearest
+filtering, lighting is plain Lambert, transparency is stippled, the gun is centred with the marine's hands on it,
+and the HUD is a classic status bar with the face in the middle.
+
+**Only wave 1 (Infernal Keep) has been art-directed in this style so far**: brick and flagstone pixel textures,
+a lava moat that burns, wall torches with animated flame sprites, carved demon plaques, a floor sigil and a
+painted hell-sky strip. The other six biomes run through the same low-res pipeline but still use the earlier
+texture designs; they are placeholders until the wave-1 look is approved.
+
 ## Tech
 
 - **Three.js r160**, ESM from a pinned CDN import map. WebGL2. No npm, no bundler.
-- **Post stack**: RenderPass → UnrealBloom → one combined pass (chromatic aberration, dash radial blur, biome-tinted
-  vignette, hurt tint, luminance-scaled grain) → Output (ACES) → SMAA (desktop).
-- **Procedural textures** (`textures.js`): tileable value-noise baked once per biome into albedo + emissive + normal maps.
-  The emissive map is what makes lava cracks, neon sigils and stained glass bloom.
-- **Merged low-poly models** (`geo.js`): enemies and guns are built from primitives and merged per material.
-  An enemy is ~6 draw calls and shares its geometry with every other enemy of that type; all arena walls are 3 draw calls.
-- **Particles**: soft point sprites (one draw call for all sparks/fire, one for smoke), instanced debris, pooled flash
-  spheres and shockwave rings.
-- **Fixed light count**: a pool of point lights (6 desktop / 3 mobile) reused for muzzle flashes, projectiles and
-  explosions, so shaders never recompile mid-fight.
+- **Post**: RenderPass → Output (sRGB) → one retro pass (palette quantise + dither, pain palette shift, dash squeeze).
+- **Procedural pixel art** (`textures.js`): every texture, sprite and the sky strip is drawn in code, pixel by pixel.
+- **Merged low-poly models** (`geo.js`): enemies and guns are primitives merged per material, flat shaded.
+  An enemy is ~6 draw calls and shares its geometry with every other enemy of that type; all walls are 3 draw calls.
+- **Particles**: square point sprites with stipple transparency, instanced debris, flash polyhedra and ground rings.
+- **Fixed light count**: a small pool of point lights reused for muzzle flashes, projectiles and explosions.
 - **Audio**: Web Audio only. Step-sequenced music (normal/boss), per-biome drone, procedural SFX, panned enemy sounds.
 
 ## Biomes (one per wave, in rotation)
 
 Infernal Keep · Tech Hell · Blood Cathedral · Void Arena · Cryo Lab · Ash Wastes · Bone Mire.
-Each has its own textures, fog, lights, sky, glowing props, embers, maze layout and ambient tone. Void, Ash and Bone
-are open to the sky; the others have a beamed ceiling. Transitions fade to black, swap, and show a title card.
+Transitions fade to black, swap, and show a title card.
 
 ## Gameplay
 
@@ -42,10 +49,8 @@ pause bottom-right, light aim assist.
 
 ## Performance
 
-- Measured in a busy wave (16 enemies, shadows on): ~180 draw calls, ~20k triangles per frame; ~65 calls in light mode.
-- **Modo leve** (start screen and pause menu, remembered): no bloom, no SMAA, no shadows, lower resolution.
-  It switches on by itself if the frame rate stays under ~34 fps for 3 seconds.
-- Mobile defaults: pixel ratio 1, no shadows, half-size textures without normal maps, fewer lights and particles.
+The 3D view is at most a few hundred pixels tall, so fill cost is tiny. A busy wave is roughly 100 draw calls.
+The start screen and pause menu have a `PIXELS: 240p / 480p` switch for a sharper (still pixelated) image.
 
 ## How it was tested, and what was not
 
