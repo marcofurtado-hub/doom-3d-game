@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0a0304">
+<title>DOOMZINHO 2.0 — INFERNAL</title>
+<style>
+:root{
+    --fg:#e8c020; --fg-dim:#b8a090; --red:#e03818; --red-dim:#8a2010;
+    --bg:#0a0304; --bg2:#1a0a08; --accent:#ff6a28;
+    --hp:#28c82a; --hp-mid:#d4a020; --hp-low:#e03818;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow:hidden;background:#000;color:#fff;font-family:'Share Tech Mono','Courier New',monospace;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent}
+canvas{display:block;position:fixed;top:0;left:0;width:100vw;height:100vh}
+body.locked{cursor:none}
+body:not(.locked){cursor:crosshair}
+
+/* ===== HUD ===== */
+#hud{position:fixed;top:0;left:0;width:100%;pointer-events:none;z-index:10}
+#hud-top{display:flex;justify-content:space-between;padding:10px 24px;background:linear-gradient(180deg,rgba(0,0,0,0.6) 0%,rgba(0,0,0,0) 100%)}
+#hud-top .col{display:flex;gap:16px;align-items:center}
+#hud-top .stat{color:#b8a090;font-size:13px;font-weight:bold;letter-spacing:2px;text-shadow:0 2px 6px rgba(0,0,0,0.9)}
+#hud-top .val{color:var(--fg);font-size:17px}
+#hud-top .val.red{color:var(--red)}
+#hud-top .biome{color:var(--accent);text-shadow:0 0 8px rgba(255,106,40,0.5);font-size:14px;letter-spacing:3px}
+
+#combo{position:fixed;top:60px;right:24px;color:var(--fg);font-size:20px;font-weight:bold;pointer-events:none;z-index:10;text-shadow:0 0 12px rgba(232,192,32,0.6);opacity:0;transition:opacity 0.2s}
+#combo.on{opacity:1}
+
+/* ===== BOTTOM BAR (modernized DOOM HUD) ===== */
+#bottom-hud{position:fixed;bottom:0;left:0;width:100%;height:92px;background:linear-gradient(0deg,rgba(0,0,0,0.85) 0%,rgba(0,0,0,0.45) 60%,rgba(0,0,0,0) 100%);display:flex;align-items:flex-end;justify-content:center;padding:0 24px 12px;pointer-events:none;z-index:10;gap:14px}
+#bottom-hud.hidden{display:none}
+.hud-block{display:flex;flex-direction:column;align-items:center;padding:4px 14px;background:rgba(10,4,6,0.55);border:1px solid rgba(232,192,32,0.18);border-radius:6px;min-width:70px;backdrop-filter:blur(4px)}
+.hud-label{color:#8a7060;font-size:9px;letter-spacing:2px;text-transform:uppercase;margin-bottom:2px}
+.hud-val{color:var(--fg);font-size:26px;font-weight:bold;line-height:1;text-shadow:0 0 10px rgba(232,192,32,0.4);font-variant-numeric:tabular-nums}
+.hud-val.red{color:var(--red);text-shadow:0 0 12px rgba(224,56,24,0.6)}
+
+#hp-wrap{min-width:148px}
+#hp-bar-bg{width:132px;height:8px;background:rgba(40,8,8,0.9);border:1px solid rgba(224,56,24,0.5);border-radius:2px;margin-top:6px;overflow:hidden;position:relative}
+#hp-bar{height:100%;width:100%;background:linear-gradient(90deg,var(--hp-low),var(--hp));transition:width 0.18s ease-out;box-shadow:0 0 8px currentColor}
+
+#face-block{width:76px;height:76px;padding:0;border-radius:6px;border:2px solid rgba(232,192,32,0.3);background:rgba(10,4,6,0.9);overflow:hidden;position:relative}
+#face-canvas{width:100%;height:100%;image-rendering:pixelated}
+#face-block::after{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at center,transparent 50%,rgba(0,0,0,0.5) 100%);pointer-events:none}
+
+#weap-block{min-width:220px}
+#weap-slots{display:flex;gap:3px;margin-top:3px}
+.wep-slot{color:#443a30;font-size:10px;font-weight:bold;padding:2px 5px;border:1px solid rgba(100,80,60,0.3);background:rgba(20,10,8,0.6);border-radius:3px;min-width:16px;text-align:center}
+.wep-slot.has{color:var(--fg-dim);border-color:rgba(232,192,32,0.3)}
+.wep-slot.active{color:var(--fg);border-color:var(--fg);background:rgba(232,192,32,0.15);box-shadow:0 0 8px rgba(232,192,32,0.4)}
+#wep-name{color:var(--fg);font-size:11px;letter-spacing:2px;margin-top:3px;text-align:center}
+
+#armor-block .hud-val{color:#6ac0ff;text-shadow:0 0 10px rgba(106,192,255,0.4)}
+
+/* ===== SCREEN FX LAYERS ===== */
+#vignette{position:fixed;inset:0;pointer-events:none;z-index:7;background:radial-gradient(ellipse at center,transparent 50%,rgba(0,0,0,0.4) 100%)}
+#damage-vig{position:fixed;inset:0;pointer-events:none;z-index:8;background:radial-gradient(ellipse at center,transparent 30%,rgba(255,0,0,0.9) 100%);opacity:0;transition:opacity 0.08s}
+#hit-flash{position:fixed;inset:0;pointer-events:none;z-index:9;background:rgba(255,80,20,0);transition:background 0.05s}
+#damage-dirs{position:fixed;inset:0;pointer-events:none;z-index:8}
+.dmg-arc{position:absolute;top:50%;left:50%;width:180px;height:180px;margin:-90px 0 0 -90px;border:3px solid var(--red);border-radius:50%;opacity:0;clip-path:polygon(50% 50%,100% 0%,100% 100%)}
+
+#crosshair{position:fixed;left:50%;top:calc(50% - 40px);width:22px;height:22px;margin:-11px 0 0 -11px;pointer-events:none;z-index:11;display:none}
+#crosshair::before,#crosshair::after,#crosshair .d{content:'';position:absolute;background:var(--fg);box-shadow:0 0 6px var(--fg);opacity:0.85}
+#crosshair::before{top:10px;left:0;width:6px;height:2px}
+#crosshair::before{box-shadow:0 0 6px var(--fg)}
+#crosshair .r{top:10px;right:0;width:6px;height:2px;background:var(--fg);position:absolute;box-shadow:0 0 6px var(--fg);opacity:0.85}
+#crosshair .u{left:10px;top:0;width:2px;height:6px;background:var(--fg);position:absolute;box-shadow:0 0 6px var(--fg);opacity:0.85}
+#crosshair .b{left:10px;bottom:0;width:2px;height:6px;background:var(--fg);position:absolute;box-shadow:0 0 6px var(--fg);opacity:0.85}
+#crosshair .dot{left:9px;top:9px;width:4px;height:4px;background:var(--red);box-shadow:0 0 8px var(--red);border-radius:50%;position:absolute}
+body.crosshair-hit #crosshair::before,body.crosshair-hit #crosshair .r,body.crosshair-hit #crosshair .u,body.crosshair-hit #crosshair .b{background:var(--red);box-shadow:0 0 10px var(--red)}
+
+/* ===== ANNOUNCEMENTS ===== */
+#announce{position:fixed;top:36%;left:50%;transform:translate(-50%,-50%);text-align:center;pointer-events:none;z-index:20;opacity:0;transition:opacity 0.3s}
+#announce h1{font-size:54px;color:var(--red);text-shadow:0 0 30px rgba(224,56,24,0.6),0 4px 12px rgba(0,0,0,0.9);letter-spacing:3px}
+#announce h2{font-size:22px;color:var(--fg);margin-top:6px;letter-spacing:2px}
+
+#biome-card{position:fixed;bottom:50%;left:50%;transform:translate(-50%,50%);text-align:center;pointer-events:none;z-index:19;opacity:0;transition:opacity 0.5s ease-out;padding:30px 60px;background:linear-gradient(135deg,rgba(0,0,0,0.75) 0%,rgba(20,10,8,0.6) 100%);border-top:2px solid var(--accent);border-bottom:2px solid var(--accent);backdrop-filter:blur(8px)}
+#biome-card.on{opacity:1}
+#biome-card .small{color:var(--fg-dim);font-size:11px;letter-spacing:5px;margin-bottom:8px}
+#biome-card .name{color:var(--accent);font-size:42px;letter-spacing:8px;font-weight:bold;text-shadow:0 0 24px currentColor}
+#biome-card .sub{color:#b8a090;font-size:12px;margin-top:8px;letter-spacing:3px}
+
+/* ===== MENUS ===== */
+.screen{position:fixed;inset:0;display:none;flex-direction:column;justify-content:center;align-items:center;z-index:30;background:radial-gradient(ellipse at center,rgba(60,10,8,0.35) 0%,rgba(0,0,0,0.95) 75%);padding:20px}
+.screen.on{display:flex}
+
+#start-screen{position:fixed;inset:0;display:flex;flex-direction:column;justify-content:center;align-items:center;z-index:30;padding:20px;background:#000}
+#title-canvas{position:absolute;inset:0;width:100%;height:100%;z-index:-1}
+#title-overlay{position:relative;display:flex;flex-direction:column;align-items:center;max-width:720px;width:100%}
+#start-screen h1{font-size:88px;color:var(--red);text-shadow:0 0 40px rgba(224,56,24,0.7),0 0 6px rgba(255,106,40,0.8);letter-spacing:8px;line-height:1;margin-bottom:0;animation:titlepulse 3.2s ease-in-out infinite}
+@keyframes titlepulse{0%,100%{text-shadow:0 0 40px rgba(224,56,24,0.6),0 0 4px rgba(255,106,40,0.6)}50%{text-shadow:0 0 70px rgba(255,106,40,0.9),0 0 20px rgba(224,56,24,1)}}
+#start-screen .sub{color:var(--fg-dim);font-size:13px;letter-spacing:6px;margin-top:4px;text-transform:uppercase}
+#start-screen .version{color:#5a4a30;font-size:11px;letter-spacing:4px;margin-top:2px}
+
+.info-panel{background:linear-gradient(135deg,rgba(10,4,6,0.85) 0%,rgba(20,10,8,0.65) 100%);border:1px solid rgba(224,56,24,0.3);padding:16px 28px;margin-top:18px;max-width:600px;text-align:left;backdrop-filter:blur(6px)}
+.info-panel .hd{display:block;color:var(--red);font-size:13px;font-weight:bold;letter-spacing:4px;margin-bottom:8px;text-transform:uppercase}
+.info-panel p{color:var(--fg-dim);font-size:13px;line-height:1.75;margin:0}
+.info-panel p+p{margin-top:8px}
+.info-panel .hl{color:var(--fg)}
+.info-panel .red{color:var(--red)}
+.info-panel + .info-panel{margin-top:12px}
+
+.cta{color:var(--red);font-size:20px;margin-top:22px;animation:pulse 1.6s infinite;letter-spacing:4px;pointer-events:auto;cursor:pointer;padding:10px 32px;border:1px solid rgba(224,56,24,0.6)}
+@keyframes pulse{0%,100%{opacity:1;box-shadow:0 0 20px rgba(224,56,24,0.3)}50%{opacity:0.5;box-shadow:0 0 40px rgba(224,56,24,0.6)}}
+
+#game-over h1{font-size:68px;color:var(--red);letter-spacing:6px;text-shadow:0 0 30px rgba(224,56,24,0.6)}
+#game-over .stats{color:var(--fg-dim);font-size:16px;margin-top:14px;line-height:1.8;text-align:center}
+#game-over .stats .hl{color:var(--fg)}
+#go-name{margin-top:18px;text-align:center}
+#go-name p{color:var(--fg);font-size:14px;margin-bottom:8px;letter-spacing:2px}
+#go-input{background:rgba(10,4,6,0.9);border:1px solid var(--red);color:var(--fg);font-family:inherit;font-size:20px;padding:8px 14px;text-align:center;outline:none;width:220px;letter-spacing:3px}
+.ranking{margin-top:16px;color:var(--fg-dim);font-size:12px;line-height:1.7;text-align:center;letter-spacing:1px}
+.ranking .top{color:var(--fg)}
+
+#pause-screen h1{font-size:48px;color:var(--fg);letter-spacing:6px}
+#pause-screen .controls{color:var(--fg-dim);font-size:13px;line-height:2;margin-top:20px;text-align:center}
+#pause-screen .controls .hl{color:var(--fg)}
+#pause-screen .opt{color:var(--fg-dim);font-size:13px;margin-top:14px;display:flex;gap:16px;justify-content:center;flex-wrap:wrap}
+#pause-screen .opt .btn{color:var(--red);cursor:pointer;pointer-events:auto;padding:6px 16px;border:1px solid rgba(224,56,24,0.4)}
+#pause-screen .opt .btn.on{color:var(--fg);border-color:var(--fg)}
+
+#upgrade-screen{background:rgba(0,0,0,0.9)}
+#upgrade-screen h1{font-size:42px;color:var(--fg);letter-spacing:4px;margin-bottom:8px}
+#upgrade-screen .sub{color:var(--fg-dim);font-size:14px;letter-spacing:3px;margin-bottom:28px}
+#upgrade-choices{display:flex;gap:22px;flex-wrap:wrap;justify-content:center;max-width:980px}
+.upg-card{width:220px;background:linear-gradient(135deg,rgba(10,4,6,0.85),rgba(20,10,8,0.65));border:1px solid rgba(224,56,24,0.4);padding:20px;cursor:pointer;pointer-events:auto;transition:all 0.15s;text-align:center}
+.upg-card:hover{border-color:var(--fg);background:rgba(232,192,32,0.08);transform:translateY(-4px)}
+.upg-card .icon{font-size:34px;color:var(--accent)}
+.upg-card .name{color:var(--fg);font-size:17px;letter-spacing:2px;margin-top:8px}
+.upg-card .desc{color:var(--fg-dim);font-size:12px;line-height:1.5;margin-top:10px}
+
+/* ===== MOBILE ===== */
+.mbtn{position:fixed;pointer-events:auto;background:rgba(10,4,6,0.6);border:2px solid rgba(232,192,32,0.6);color:var(--fg);font-weight:bold;font-size:14px;border-radius:50%;display:none;align-items:center;justify-content:center;user-select:none;-webkit-tap-highlight-color:transparent;text-transform:uppercase;z-index:18;backdrop-filter:blur(4px);box-shadow:0 2px 8px rgba(0,0,0,0.6)}
+.mbtn.on{background:rgba(224,56,24,0.65);border-color:var(--fg);color:#fff;box-shadow:0 0 20px rgba(224,56,24,0.6)}
+body.mobile.playing .mbtn{display:flex}
+#btn-fire{bottom:110px;right:80px;width:92px;height:92px;font-size:16px;border-color:rgba(224,56,24,0.75);color:var(--red)}
+#btn-dash{bottom:215px;right:32px;width:62px;height:62px;font-size:11px}
+#btn-reload{bottom:110px;right:185px;width:62px;height:62px;font-size:22px}
+#btn-wep-next{top:60px;right:20px;width:52px;height:52px;font-size:20px}
+#btn-wep-prev{top:60px;left:20px;width:52px;height:52px;font-size:20px}
+#btn-pause{bottom:14px;right:14px;width:42px;height:42px;font-size:16px;border-radius:8px;z-index:40}
+
+#joy-base,#joy-knob{position:fixed;border-radius:50%;pointer-events:none;z-index:12;display:none}
+#joy-base{width:120px;height:120px;background:rgba(255,255,255,0.05);border:2px solid rgba(232,192,32,0.35);box-shadow:0 0 20px rgba(0,0,0,0.5)}
+#joy-knob{width:60px;height:60px;background:rgba(232,192,32,0.3);border:2px solid rgba(232,192,32,0.7);box-shadow:0 0 16px rgba(232,192,32,0.3)}
+body.mobile #joy-base.on,body.mobile #joy-knob.on{display:block}
+
+#portrait-warn{display:none;position:fixed;inset:0;background:#000;z-index:60;align-items:center;justify-content:center;flex-direction:column;color:var(--fg);font-size:20px;text-align:center;padding:20px}
+#portrait-warn .rot{font-size:60px;margin-bottom:20px;animation:rotHint 1.8s infinite}
+@keyframes rotHint{0%,100%{transform:rotate(0)}50%{transform:rotate(90deg)}}
+@media (orientation:portrait) and (max-width:900px){body.mobile #portrait-warn{display:flex}}
+
+body.mobile #bottom-hud{height:70px;padding-bottom:6px}
+body.mobile .hud-val{font-size:18px}
+body.mobile .hud-label{font-size:8px}
+body.mobile .hud-block{min-width:52px;padding:3px 8px}
+body.mobile #face-block{width:56px;height:56px}
+body.mobile #hp-wrap{min-width:110px}
+body.mobile #hp-bar-bg{width:96px}
+body.mobile #weap-block{min-width:140px}
+body.mobile .wep-slot{padding:1px 3px;font-size:9px}
+body.mobile #wep-name{font-size:10px}
+body.mobile #hud-top{padding:6px 12px}
+body.mobile #hud-top .stat{font-size:10px;letter-spacing:1px}
+body.mobile #hud-top .val{font-size:13px}
+body.mobile #start-screen h1{font-size:54px;letter-spacing:5px}
+body.mobile .info-panel p{font-size:12px}
+body.mobile #crosshair{top:calc(50% - 25px)}
+body.mobile .upg-card{width:160px;padding:14px}
+
+/* ===== PERF TOGGLE / TITLE ANIM CANVAS ===== */
+#boot{position:fixed;inset:0;background:#000;z-index:100;display:flex;align-items:center;justify-content:center;flex-direction:column;color:var(--red)}
+#boot .pct{font-size:12px;color:var(--fg-dim);margin-top:12px;letter-spacing:4px}
+#boot .barbg{width:260px;height:3px;background:rgba(224,56,24,0.15);margin-top:16px;overflow:hidden}
+#boot .barfl{height:100%;width:0;background:var(--red);transition:width 0.2s;box-shadow:0 0 8px currentColor}
+</style>
+</head>
+<body>
+
+<div id="boot">
+    <div style="font-size:30px;letter-spacing:8px;animation:titlepulse 1.2s ease-in-out infinite">DOOMZINHO · 2.0</div>
+    <div class="barbg"><div class="barfl" id="boot-bar"></div></div>
+    <div class="pct" id="boot-txt">LOADING...</div>
+</div>
+
+<div id="start-screen">
+    <canvas id="title-canvas"></canvas>
+    <div id="title-overlay">
+        <h1>DOOMZINHO</h1>
+        <div class="sub">· INFERNAL EDITION ·</div>
+        <div class="version">v2.0 — arena shooter · roguelike · demon hell</div>
+
+        <div class="info-panel" id="start-desktop">
+            <span class="hd">🎮 controles</span>
+            <p>
+            <span class="hl">WASD</span> mover · <span class="hl">MOUSE</span> olhar · <span class="hl">CLICK</span> atirar<br>
+            <span class="hl">1-9</span> arma · <span class="hl">SCROLL</span> ciclar · <span class="hl">SHIFT</span> dash · <span class="hl">R</span> recarregar · <span class="hl">ESC</span> pausar
+            </p>
+            <span class="hd" style="margin-top:12px">⚔️ como funciona</span>
+            <p>
+            ▸ Cada wave acontece em um <span class="hl">bioma diferente</span><br>
+            ▸ <span class="red">BOSS</span> a cada 5 waves = <span class="hl">cura total</span> + upgrade + arma nova<br>
+            ▸ Kills curam HP · balas <span class="hl">ricocheteiam</span><br>
+            ▸ Morreu, recomeça (<span class="red">roguelike</span>)
+            </p>
+        </div>
+
+        <div class="info-panel" id="start-mobile" style="display:none">
+            <span class="hd">📱 controles</span>
+            <p>
+            <span class="hl">Esquerda</span>: joystick analógico de movimento<br>
+            <span class="hl">Direita</span>: arrasta pra olhar · <span class="hl">FIRE / DASH / ↻ / ◀▶</span>
+            </p>
+            <span class="hd" style="margin-top:12px">⚔️ como funciona</span>
+            <p>
+            ▸ Cada wave acontece em um <span class="hl">bioma diferente</span><br>
+            ▸ Boss a cada 5 waves · kills curam HP · balas ricocheteiam
+            </p>
+        </div>
+
+        <div class="cta" id="start-btn">[ TOQUE PRA COMEÇAR ]</div>
+    </div>
+</div>
+
+<div id="game-over" class="screen">
+    <h1>GAME OVER</h1>
+    <div class="stats" id="go-stats"></div>
+    <div id="go-name">
+        <p>ENTER YOUR NAME</p>
+        <input id="go-input" type="text" maxlength="12" placeholder="PLAYER">
+    </div>
+    <div class="ranking" id="go-rank"></div>
+    <div class="cta" id="go-restart" style="margin-top:20px">[ REINICIAR ]</div>
+</div>
+
+<div id="pause-screen" class="screen">
+    <h1>PAUSED</h1>
+    <div class="controls" id="pause-controls"></div>
+    <div class="opt">
+        <span class="btn" id="opt-vol-down">[ VOL - ]</span>
+        <span id="opt-vol">50%</span>
+        <span class="btn" id="opt-vol-up">[ VOL + ]</span>
+        <span class="btn" id="opt-perf">PERF MODE</span>
+    </div>
+    <div class="cta" style="margin-top:28px;font-size:16px">[ESC] RESUME</div>
+</div>
+
+<div id="upgrade-screen" class="screen">
+    <h1>⚔️ UPGRADE</h1>
+    <div class="sub" id="upg-sub">CHOOSE YOUR BOON</div>
+    <div id="upgrade-choices"></div>
+</div>
+
+<div id="hud" style="display:none">
+    <div id="hud-top">
+        <div class="col">
+            <div class="stat">WAVE <span class="val" id="h-wave">1</span></div>
+            <div class="stat">SCORE <span class="val" id="h-score">0</span></div>
+        </div>
+        <div class="col">
+            <div class="stat biome" id="h-biome">INFERNAL KEEP</div>
+        </div>
+        <div class="col">
+            <div class="stat"><span id="h-time">0:00</span></div>
+            <div class="stat">KILLS <span class="val" id="h-kills">0</span></div>
+            <div class="stat">HI <span class="val" id="h-hi">0</span></div>
+        </div>
+    </div>
+</div>
+
+<div id="bottom-hud" class="hidden">
+    <div class="hud-block">
+        <div class="hud-label">AMMO</div>
+        <div class="hud-val" id="hv-ammo">∞</div>
+    </div>
+    <div class="hud-block" id="hp-wrap">
+        <div class="hud-label">HEALTH</div>
+        <div class="hud-val red" id="hv-hp">100</div>
+        <div id="hp-bar-bg"><div id="hp-bar"></div></div>
+    </div>
+    <div class="hud-block" id="face-block"><canvas id="face-canvas" width="64" height="64"></canvas></div>
+    <div class="hud-block" id="weap-block">
+        <div class="hud-label">ARMS</div>
+        <div id="weap-slots"></div>
+        <div id="wep-name">PISTOL</div>
+    </div>
+    <div class="hud-block">
+        <div class="hud-label">WAVE</div>
+        <div class="hud-val" id="hv-wave">1</div>
+    </div>
+</div>
+
+<div id="combo"></div>
+<div id="announce"><h1></h1><h2></h2></div>
+<div id="biome-card"><div class="small">ENTERING</div><div class="name"></div><div class="sub"></div></div>
+
+<div id="vignette"></div>
+<div id="damage-vig"></div>
+<div id="hit-flash"></div>
+<div id="damage-dirs"></div>
+<div id="crosshair"><span class="r"></span><span class="u"></span><span class="b"></span><span class="dot"></span></div>
+
+<div id="joy-base"></div>
+<div id="joy-knob"></div>
+<div id="btn-fire" class="mbtn">FIRE</div>
+<div id="btn-dash" class="mbtn">DASH</div>
+<div id="btn-reload" class="mbtn">↻</div>
+<div id="btn-wep-prev" class="mbtn">◀</div>
+<div id="btn-wep-next" class="mbtn">▶</div>
+<div id="btn-pause" class="mbtn">II</div>
+
+<div id="portrait-warn"><div class="rot">📱</div><div>Gire o celular pra jogar<br>(landscape)</div></div>
+
+<script type="importmap">
+{"imports":{
+    "three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+}}
+</script>
+<script type="module" src="./js/main.js"></script>
+</body>
+</html>
