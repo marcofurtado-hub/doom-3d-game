@@ -12,6 +12,10 @@ ordered (Bayer) dithering. No bloom, no antialiasing, no shadow maps. Textures a
 filtering, lighting is plain Lambert, transparency is stippled, the gun is centred with the marine's hands on it,
 and the HUD is a classic status bar with the face in the middle.
 
+Enemies and guns are painted 2D sprites (billboards and a first-person card), generated with GPT Image 2.6 and
+reduced offline to low resolution with a small palette (`assets/`, about 0.6 MB). The bomb launcher and molotov
+still use the older 3D models. The game renders at 480 lines by default (240 optional); only the art is low-res.
+
 **Only wave 1 (Infernal Keep) has been art-directed in this style so far**: brick and flagstone pixel textures,
 a lava moat that burns, wall torches with animated flame sprites, carved demon plaques, a floor sigil and a
 painted hell-sky strip. The other six biomes run through the same low-res pipeline but still use the earlier

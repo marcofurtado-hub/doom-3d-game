@@ -272,10 +272,11 @@ body.mobile #wep-name{font-size:6px}
 body.mobile #bottom-hud{height:var(--bar);padding:0}
 
 #crosshair{top:calc((100% - var(--bar)) / 2);width:10px;height:10px;margin:-5px 0 0 -5px;transition:none}
-#crosshair::before,#crosshair .r,#crosshair .u,#crosshair .b{display:none}
-#crosshair .dot{left:3px;top:3px;width:4px;height:4px;background:#f0f0e0;opacity:.9}
+#crosshair{width:22px;height:22px;margin:-11px 0 0 -11px}
+#crosshair::before,#crosshair .r,#crosshair .u,#crosshair .b{background:#f0e8d0;opacity:1;outline:1px solid #000}
+#crosshair .dot{left:10px;top:10px;width:2px;height:2px;background:#f0e8d0;opacity:1}
 body.crosshair-hit #crosshair{transform:none}
-body.crosshair-hit #crosshair .dot{background:#ff3018;left:1px;top:1px;width:8px;height:8px}
+body.crosshair-hit #crosshair::before,body.crosshair-hit #crosshair .r,body.crosshair-hit #crosshair .u,body.crosshair-hit #crosshair .b,body.crosshair-hit #crosshair .dot{background:#ff3018}
 #damage-dirs{bottom:var(--bar)}
 .dmg-arc{filter:none;border-color:#d81c0c}
 
@@ -363,7 +364,7 @@ body.mobile #biome-card .name{font-size:12px}
         </div>
 
         <div class="cta" id="start-btn">[ CLIQUE PRA COMEÇAR ]</div>
-        <div class="opt-row nostart"><span class="tbtn" id="start-perf">PIXELS: 240p</span></div>
+        <div class="opt-row nostart"><span class="tbtn" id="start-perf">PIXELS: 480p</span></div>
     </div>
 </div>
 

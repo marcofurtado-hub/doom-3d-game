@@ -10,6 +10,7 @@ import { EDEF, BDEF, buildEnemyMesh, disposeEnemyMesh } from './enemies.js';
 import { Player } from './player.js';
 import { Input } from './input.js';
 import { HUD } from './hud.js';
+import { loadAssets } from './textures.js';
 
 // ================================================================
 // DOOMZINHO v2 — orchestration: game flow, combat, AI, main loop
@@ -33,12 +34,14 @@ const tap = (el, fn) => {
 const boot = (pct, txt) => { $('boot-bar').style.width = pct + '%'; if (txt) $('boot-txt').textContent = txt; };
 
 // ---------------------------------------------------------------- setup
-boot(10, 'INIT...');
+boot(10, 'ASSETS...');
+await loadAssets(new URL('../assets/', import.meta.url).href);
+boot(30, 'INIT...');
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(80, innerWidth / innerHeight, 0.04, 220);
 scene.add(camera);
 
-let perf = localStorage.getItem('doom3dv2Hd') === '1'; // here "perf" means the sharper 480-line mode
+let perf = localStorage.getItem('doom3dv2Hd') !== '0'; // here "perf" means the sharper 480-line mode
 const barHeight = () => parseInt(getComputedStyle(document.body).getPropertyValue('--bar')) || 88;
 const renderer = new RendererSystem(scene, camera, { isMobile, hd: perf, barHeight });
 const arena = new Arena(scene);
@@ -257,7 +260,9 @@ function startSpawning() {
         toSpawn = Math.min(5 + waveNum * 2, 36);
         spawnRate = Math.max(0.45, 1.5 - waveNum * 0.07);
         audio.setMusicMode('normal');
-        fx.announce('WAVE ' + waveNum, '', 1300);
+        const intro = INTRO[waveNum];
+        introType = intro ? intro[0] : null;
+        fx.announce('WAVE ' + waveNum, intro ? 'NOVO INIMIGO: ' + intro[1] : '', intro ? 2400 : 1300);
     }
 }
 
@@ -489,7 +494,8 @@ function tryFire(dt) {
 
 // ---------------------------------------------------------------- player bullets
 function ricochetFx(b) {
-    particles.hitSpark(b.x, b.y, b.z, 4, b.color, 0.7);
+    particles.hitSpark(b.x, b.y, b.z, 7, b.color, 0.9);
+    particles.smokePuff(b.x, b.y, b.z, 1, 0x8a8078, 0.4);
     if (sndRic <= 0) { audio.ricochet(); sndRic = 0.07; }
 }
 
@@ -541,13 +547,14 @@ function updateBullets(dt) {
         if (b.trail === 'rocket') { particles.smokePuff(b.x, b.y, b.z, 1, 0x6a645e, 0.5); particles.trail(b.x, b.y, b.z, 0xffa040, 0.12); }
         else if (b.trail === 'plasma') particles.trail(b.x, b.y, b.z, b.color, 0.09, 0.18);
         else if (b.trail === 'fire' || b.trail === 'bomb') particles.trail(b.x, b.y, b.z, b.color, 0.1, 0.3);
+        else if (!b.trail) particles.trail(b.x, b.y, b.z, b.color, b.sz * 0.8, 0.14);
         else if (b.trail === 'bfg') { particles.trail(b.x, b.y, b.z, b.color, 0.3, 0.35); particles.trail(b.x, b.y, b.z, 0xffffff, 0.12, 0.25); }
     }
 }
 
 function surfaceImpact(b) {
     if (b.expl || b.fire) explode(b);
-    else particles.hitSpark(b.x, b.y, b.z, 5, b.color, 0.8);
+    else { particles.hitSpark(b.x, b.y, b.z, 8, b.color, 1.0); particles.smokePuff(b.x, b.y, b.z, 2, 0x8a8078, 0.5); }
 }
 
 function explode(b, direct = null) {
@@ -590,12 +597,18 @@ function updateZones(dt) {
 }
 
 // ---------------------------------------------------------------- enemies
+// One new monster per wave for the first seven, so each wave has something to learn
+const ROSTER = [['imp'], ['imp', 'imp', 'skull'], ['imp', 'skull', 'demon'], ['imp', 'skull', 'demon', 'caco'], null,
+    ['imp', 'demon', 'caco', 'baron'], ['skull', 'demon', 'caco', 'baron', 'revenant']];
+const INTRO = { 2: ['skull', 'LOST SOUL'], 3: ['demon', 'DEMON'], 4: ['caco', 'CACODEMON'], 6: ['baron', 'BARON'], 7: ['revenant', 'REVENANT'] };
+let introType = null;
 function pickEnemyType(wave) {
+    if (introType) { const t = introType; introType = null; return t; }
+    const list = ROSTER[wave - 1];
+    if (list) return list[Math.floor(Math.random() * list.length)];
     const r = Math.random();
-    if (wave < 3) return r < 0.7 ? 'imp' : 'skull';
-    if (wave < 6) return r < 0.4 ? 'imp' : r < 0.62 ? 'skull' : r < 0.85 ? 'demon' : 'caco';
-    if (wave < 10) return r < 0.25 ? 'imp' : r < 0.4 ? 'skull' : r < 0.62 ? 'demon' : r < 0.8 ? 'caco' : r < 0.92 ? 'baron' : 'revenant';
-    return r < 0.15 ? 'imp' : r < 0.3 ? 'skull' : r < 0.5 ? 'demon' : r < 0.68 ? 'caco' : r < 0.84 ? 'baron' : 'revenant';
+    if (wave < 10) return r < 0.2 ? 'imp' : r < 0.35 ? 'skull' : r < 0.58 ? 'demon' : r < 0.76 ? 'caco' : r < 0.9 ? 'baron' : 'revenant';
+    return r < 0.12 ? 'imp' : r < 0.26 ? 'skull' : r < 0.46 ? 'demon' : r < 0.64 ? 'caco' : r < 0.82 ? 'baron' : 'revenant';
 }
 
 function spawnPosition(r) {
@@ -789,6 +802,8 @@ function updateEnemies(dt) {
                 enemies.splice(i, 1);
                 continue;
             }
+            const ds = m.userData.sprite;
+            if (ds) { ds.tex.offset.x = ds.dead / ds.frames; ds.mat.color.setHex(0xffffff); }
             if (e.flying) { e.y = Math.max(e.r * 0.6, e.y - 9 * t * dt * 3); m.rotation.z += dt * 6; }
             else m.rotation.x = -Math.min(1, t / 0.3) * 1.45;
             m.position.set(e.x, e.y - Math.max(0, t - 0.6) * 1.2, e.z);
@@ -854,6 +869,12 @@ function updateEnemies(dt) {
         const legs = m.userData.legs, arms = m.userData.arms, gait = e.t * (5 + speed);
         if (speed > 0) for (let j = 0; j < legs.length; j++) legs[j].rotation.x = Math.sin(gait + j * Math.PI) * 0.5;
         for (let j = 0; j < arms.length; j++) arms[j].rotation.x = e.lunge > 0 ? -1.6 * e.lunge : e.windT > 0 ? 0.9 : Math.sin(gait + (j + 1) * Math.PI) * 0.35 - 0.15;
+        const spr = m.userData.sprite;
+        if (spr) {
+            const f = e.hurtT > 0 ? spr.pain : (e.lunge > 0.25 || e.windT > 0 || e.chargeT > 0 || (e.flying && dist < 4)) ? spr.attack : spr.walk[Math.floor(e.t * 6) % spr.walk.length];
+            spr.tex.offset.x = f / spr.frames;
+            spr.mat.color.setHex(e.hurtT > 0 ? 0xff9a9a : 0xffffff);
+        }
         const eye = m.userData.eyeMat;
         if (eye && !e.flashed) eye.emissiveIntensity = e.windT > 0 ? 7 : 2.6 + Math.sin(e.t * 5) * 0.6;
 
@@ -957,7 +978,7 @@ function updatePickups(dt) {
 
 // ---------------------------------------------------------------- player
 function damagePlayer(amount, sx, sz) {
-    if (state !== 'play' || player.inv > 0) return;
+    if (state !== 'play' || upgrading || player.inv > 0) return;
     const died = player.damage(amount);
     fx.damage(amount / 40);
     fx.addShake(Math.min(0.6, 0.15 + amount / 40));

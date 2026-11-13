@@ -273,8 +273,30 @@ function bake(fn, size) {
     return { map: nearest(new THREE.CanvasTexture(cA)), emissiveMap: glow ? nearest(new THREE.CanvasTexture(cE)) : null };
 }
 
+// ---------------------------------------------------------------- painted assets (v2/assets)
+// Low-res PNGs generated with GPT Image 2.6 and reduced offline. If they fail to load (e.g. file://),
+// everything falls back to the procedural versions below.
+const ASSETS = {};
+export let ATLAS = null;
+export async function loadAssets(base) {
+    try {
+        const atlas = await (await fetch(base + 'atlas.json')).json();
+        const loader = new THREE.TextureLoader(), tiles = ['wall', 'floor', 'lava', 'face'];
+        await Promise.all([...tiles, 'sky', ...Object.keys(atlas)].map(n =>
+            loader.loadAsync(base + n + '.png').then(tex => { ASSETS[n] = nearest(tex, true, tiles.includes(n)); })));
+        ATLAS = atlas;
+    } catch (e) {
+        ATLAS = null;
+        for (const k of Object.keys(ASSETS)) delete ASSETS[k];
+    }
+}
+export const asset = n => (ATLAS && ASSETS[n]) || null;
+
 // Returns { floor: {map, emissiveMap}, wall: {...} } at chunky texel sizes, cached per biome.
 export function biomeTextures(id) {
+    if (id === 'infernal' && asset('wall') && asset('floor')) {
+        return { floor: { map: asset('floor'), emissiveMap: null }, wall: { map: asset('wall'), emissiveMap: null } };
+    }
     if (!_cache.has(id)) {
         const d = DESIGNS[id], size = d.size || 128;
         _cache.set(id, { floor: bake(d.floor, size), wall: bake(d.wall, size) });
@@ -303,6 +325,7 @@ const bayer4 = (x, y) => [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5][
 
 // Lava: four hard colour bands, scrolled by the arena
 export function lavaTexture() {
+    if (asset('lava')) return asset('lava');
     return pix('lava', 64, 64, (x, y, o) => {
         const n = fbm(x / 64, y / 64, 3, 4, 131) + (bayer4(x, y) - 0.5) * 0.05;
         const c = n > 0.62 ? [255, 226, 90] : n > 0.53 ? [248, 140, 24] : n > 0.44 ? [196, 52, 12] : [84, 20, 12];
@@ -312,6 +335,7 @@ export function lavaTexture() {
 
 // Carved demon face on a stone slab, eyes lit
 export function facePanel() {
+    if (asset('face')) return asset('face');
     return pix('face', 64, 64, (x, y, o) => {
         const sp = hash(x, y, 41);
         let r = 96, g = 86, b = 84, k = 1 + (sp > 0.85 ? -0.12 : sp < 0.1 ? 0.08 : 0);
@@ -360,6 +384,7 @@ export function pentagramTexture() {
 
 // Hell sky strip for a cylinder around the arena: dithered red gradient, cloud streaks, two mountain ranges
 export function skyPanorama() {
+    if (asset('sky')) return asset('sky');
     const W = 256, H = 96;
     const ridge1 = x => 22 + 16 * fbm(x / W, 0.3, 4, 6, 201) + 8 * Math.abs(Math.sin(x / W * Math.PI * 10));
     const ridge2 = x => 10 + 20 * fbm(x / W, 0.7, 4, 5, 207);

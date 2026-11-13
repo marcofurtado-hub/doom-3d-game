@@ -12,7 +12,7 @@ const RetroShader = {
     uniforms: {
         tDiffuse: { value: null },
         uTime: { value: 0 },
-        uLevels: { value: 28 },
+        uLevels: { value: 40 },
         uHurt: { value: 0 },
         uDash: { value: 0 },
         uTint: { value: new THREE.Vector3(1, 1, 1) },

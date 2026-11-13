@@ -69,13 +69,14 @@ export class Arena {
         if (biome.keep) {
             // Classic sky: a painted strip on a cylinder instead of a shader dome
             const tex = skyPanorama();
-            tex.repeat.set(3, 1);
-            const cyl = this._add(new THREE.Mesh(new THREE.CylinderGeometry(95, 95, 60, 24, 1, true),
-                new THREE.MeshBasicMaterial({ map: tex, side: THREE.BackSide, fog: false, depthWrite: false })));
-            cyl.position.y = 22;
+            const painted = tex.image.width > 300;
+            tex.repeat.set(painted ? 2 : 3, 1);
+            const cyl = this._add(new THREE.Mesh(new THREE.CylinderGeometry(95, 95, painted ? 84 : 60, 24, 1, true),
+                new THREE.MeshBasicMaterial({ map: tex, color: painted ? 0xb8b8b8 : 0xffffff, side: THREE.BackSide, fog: false, depthWrite: false })));
+            cyl.position.y = painted ? 30 : 22;
             const cap = this._add(new THREE.Mesh(new THREE.CircleGeometry(96, 16),
                 new THREE.MeshBasicMaterial({ color: 0x1c0206, side: THREE.DoubleSide, fog: false, depthWrite: false })));
-            cap.rotation.x = Math.PI / 2; cap.position.y = 51.9;
+            cap.rotation.x = Math.PI / 2; cap.position.y = painted ? 71.9 : 51.9;
             this.sky = null;
         } else this.sky = this._add(buildSky(biome));
 

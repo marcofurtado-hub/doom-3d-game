@@ -1,17 +1,18 @@
 import * as THREE from 'three';
 import { P, box, cone, cyl, ball, merge, both } from './geo.js';
+import { asset, ATLAS } from './textures.js';
 
 // Weapon definitions + first-person weapon meshes + firing mechanics.
 
 export const WEAP = {
-    1: { name: 'PISTOL', rate: 0.17, dmg: 22, spd: 60, spread: 0.012, count: 1, sz: 0.05, color: 0xffd040, sfx: 'shoot', maxAmmo: Infinity, ric: 3, recoil: 0.035, shake: 0.12, knock: 1.5, flash: 0.1 },
-    2: { name: 'SHOTGUN', rate: 0.55, dmg: 13, spd: 55, spread: 0.085, count: 9, sz: 0.04, color: 0xffa040, sfx: 'shotgun', maxAmmo: 24, rTime: 1.0, ric: 1, recoil: 0.11, shake: 0.5, knock: 1.6, flash: 0.2, shell: 0xc03020 },
-    3: { name: 'CHAINGUN', rate: 0.055, dmg: 13, spd: 65, spread: 0.035, count: 1, sz: 0.045, color: 0xffe060, sfx: 'chain', maxAmmo: 150, rTime: 1.2, ric: 2, recoil: 0.014, shake: 0.1, knock: 0.6, flash: 0.11, spinup: true, shell: 0xd0a040 },
+    1: { name: 'PISTOL', rate: 0.17, dmg: 22, spd: 36, spread: 0.012, count: 1, sz: 0.1, color: 0xffd040, sfx: 'shoot', maxAmmo: Infinity, ric: 3, recoil: 0.035, shake: 0.12, knock: 1.5, flash: 0.1 },
+    2: { name: 'SHOTGUN', rate: 0.55, dmg: 13, spd: 32, spread: 0.085, count: 9, sz: 0.07, color: 0xffa040, sfx: 'shotgun', maxAmmo: 24, rTime: 1.0, ric: 1, recoil: 0.11, shake: 0.5, knock: 1.6, flash: 0.2, shell: 0xc03020 },
+    3: { name: 'CHAINGUN', rate: 0.055, dmg: 13, spd: 40, spread: 0.035, count: 1, sz: 0.085, color: 0xffe060, sfx: 'chain', maxAmmo: 150, rTime: 1.2, ric: 2, recoil: 0.014, shake: 0.1, knock: 0.6, flash: 0.11, spinup: true, shell: 0xd0a040 },
     4: { name: 'ROCKET', rate: 0.8, dmg: 130, spd: 26, spread: 0.004, count: 1, sz: 0.16, color: 0xff5a20, sfx: 'rocket', maxAmmo: 12, rTime: 1.5, ric: 0, recoil: 0.14, shake: 0.5, expl: true, blast: 6.5, knock: 9, flash: 0.22, trail: 'rocket' },
     5: { name: 'PLASMA', rate: 0.085, dmg: 24, spd: 42, spread: 0.02, count: 1, sz: 0.13, color: 0x40d8ff, sfx: 'plasma', maxAmmo: 80, rTime: 1.1, ric: 4, recoil: 0.018, shake: 0.08, knock: 0.8, flash: 0.13, trail: 'plasma' },
     6: { name: 'BOMB', rate: 0.9, dmg: 220, spd: 19, spread: 0.01, count: 1, sz: 0.2, color: 0xffd040, sfx: 'bomb', maxAmmo: 6, rTime: 1.6, ric: 0, recoil: 0.15, shake: 0.4, expl: true, blast: 6, knock: 10, flash: 0.16, trail: 'bomb', grav: 14, loft: 4 },
     7: { name: 'MOLOTOV', rate: 0.8, dmg: 60, spd: 18, spread: 0.01, count: 1, sz: 0.15, color: 0xff7a20, sfx: 'molotov', maxAmmo: 8, rTime: 1.3, ric: 0, recoil: 0.1, shake: 0.2, fire: true, blast: 4, knock: 2, flash: 0, trail: 'fire', grav: 14, loft: 4.5 },
-    8: { name: 'LASER', rate: 0.03, dmg: 9, spd: 90, spread: 0.004, count: 1, sz: 0.05, color: 0xff2030, sfx: 'laser', maxAmmo: 200, rTime: 0.9, ric: 6, recoil: 0.005, shake: 0.03, knock: 0.2, flash: 0.07, trail: 'laser' },
+    8: { name: 'LASER', rate: 0.03, dmg: 9, spd: 60, spread: 0.004, count: 1, sz: 0.07, color: 0xff2030, sfx: 'laser', maxAmmo: 200, rTime: 0.9, ric: 6, recoil: 0.005, shake: 0.03, knock: 0.2, flash: 0.07, trail: 'laser' },
     9: { name: 'B.F.G.', rate: 1.8, dmg: 700, spd: 17, spread: 0.002, count: 1, sz: 0.45, color: 0x70ff40, sfx: 'bfg', maxAmmo: 3, rTime: 2.4, ric: 0, recoil: 0.25, shake: 0.9, expl: true, blast: 12, knock: 16, flash: 0.35, trail: 'bfg' },
 };
 export const WC = 9;
@@ -150,6 +151,17 @@ export class WeaponView {
         this.light.position.set(0.2, 0.35, 0.25);
         camera.add(this.light);
         this._base = new THREE.Color(0xfff0d8);
+
+        // Painted first-person sprites (currently the pistol): a flat card in front of the camera, drawn last
+        this.card = new THREE.Group();
+        this.cardMesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1),
+            new THREE.MeshBasicMaterial({ transparent: true, alphaTest: 0.5, depthTest: false, depthWrite: false, fog: false }));
+        this.cardMesh.renderOrder = 999;
+        this.cardMuzzle = new THREE.Object3D();
+        this.card.add(this.cardMesh, this.cardMuzzle);
+        this.card.visible = false;
+        camera.add(this.card);
+        this.cardOn = false;
         this._flashCol = new THREE.Color();
     }
 
@@ -164,12 +176,26 @@ export class WeaponView {
         this.flash.visible = false;
         this.currentKey = k;
         this.spin = 0; this.spinup = 0; this.raise = 1; this.kick = 0;
+        const tex = asset('wep' + k);
+        this.cardOn = !!tex;
+        this.card.visible = this.cardOn;
+        this.root.visible = !this.cardOn;
+        if (tex) {
+            const info = ATLAS['wep' + k], H = 0.4 * (info.h / 160);
+            tex.repeat.set(1 / info.frames, 1);
+            this.cardMesh.material.map = tex;
+            this.cardMesh.material.needsUpdate = true;
+            this.cardMesh.scale.set(H * info.w / info.h, H, 1);
+            this.cardMuzzle.position.set(0, H * 0.3, 0);
+            this.cardY = -0.45 + H / 2;
+            this.cardFrames = info.frames;
+        }
     }
 
     fire(def) {
         this.kick = Math.min(1, this.kick + def.recoil * 4);
         if (def.flash > 0) {
-            this.flashT = 0.055;
+            this.flashT = this.cardOn ? 0.08 : 0.055;
             this.flashSize = def.flash;
             this.flash.material.color.set(def.color);
             this.flash.rotation.set(Math.random() * 6, Math.random() * 6, Math.random() * 6);
@@ -189,6 +215,11 @@ export class WeaponView {
             this.basePos.z + this.kick * 0.07);
         this.root.rotation.set(0.2 + swayY * 1.5 + this.kick * 0.3 - this.raise * 0.9 - this.dip * 0.5, -swayX * 1.5, this.dip * 0.5);
 
+        if (this.cardOn) {
+            // bottom edge sits just under the view; same sway, kick, raise and reload dip as the 3D guns
+            this.card.position.set(swayX * 2.2, this.cardY + swayY * 2.2 + this.kick * 0.04 - this.raise * 0.35 - this.dip * 0.16, -0.5);
+            this.cardMesh.material.map.offset.x = this.flashT > 0 ? 1 / this.cardFrames : 0;
+        }
         if (this.flashT > 0) {
             this.flashT -= dt;
             const f = Math.max(0, this.flashT / 0.055);
@@ -213,6 +244,7 @@ export class WeaponView {
     }
 
     getMuzzleWorld(out) {
+        if (this.cardOn) { this.card.updateWorldMatrix(true, true); return this.cardMuzzle.getWorldPosition(out); }
         this.root.updateWorldMatrix(true, true);
         return this.current.localToWorld(out.copy(this.current.userData.muzzle));
     }
@@ -231,9 +263,8 @@ export function glowMaterial(color, boost = 2.2) {
 export function makeBulletMesh(def) {
     const m = new THREE.Mesh(_ball, glowMaterial(def.color));
     const s = def.sz;
-    if (def.trail === 'laser') m.scale.set(s * 0.45, s * 0.45, s * 9);
-    else if (def.expl || def.fire || def.trail === 'plasma') m.scale.setScalar(s);
-    else m.scale.set(s * 0.7, s * 0.7, s * 7);
+    if (def.trail === 'laser') m.scale.set(s * 0.6, s * 0.6, s * 6);
+    else m.scale.setScalar(s);
     return m;
 }
 export function makeOrbMesh(color, r) {
