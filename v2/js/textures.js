@@ -1,393 +1,291 @@
 import * as THREE from 'three';
 
-// Procedural canvas-baked textures for biome walls/floor.
-// Each texture returns a CanvasTexture that can be used as map/roughnessMap/normalMap.
+// Procedural, tileable textures baked per biome: albedo + emissive + normal.
+// Everything is computed per pixel from periodic value noise, so tiles are seamless.
+
 const _cache = new Map();
 
-function canvas(size = 256) {
-    const c = document.createElement('canvas');
-    c.width = c.height = size;
-    return { c, ctx: c.getContext('2d') };
+function hash(ix, iy, seed) {
+    let h = Math.imul(ix, 374761393) ^ Math.imul(iy, 668265263) ^ Math.imul(seed, 1274126177);
+    h = Math.imul(h ^ (h >>> 13), 1274126177);
+    h ^= h >>> 16;
+    return (h >>> 0) / 4294967296;
 }
 
-function fbm(x, y, oct = 4, seed = 0) {
-    let v = 0, amp = 1, freq = 1, max = 0;
+function vnoise(x, y, px, py, seed) {
+    const x0 = Math.floor(x), y0 = Math.floor(y);
+    const fx = x - x0, fy = y - y0;
+    const sx = fx * fx * (3 - 2 * fx), sy = fy * fy * (3 - 2 * fy);
+    const xa = ((x0 % px) + px) % px, xb = (xa + 1) % px;
+    const ya = ((y0 % py) + py) % py, yb = (ya + 1) % py;
+    const a = hash(xa, ya, seed), b = hash(xb, ya, seed);
+    const c = hash(xa, yb, seed), d = hash(xb, yb, seed);
+    return a + (b - a) * sx + (c - a + (a - b + d - c) * sx) * sy;
+}
+
+// u,v in [0,1); px/py = lattice cells across the tile at the first octave
+function fbm(u, v, oct, px, seed, py = px) {
+    let amp = 1, sum = 0, max = 0;
     for (let i = 0; i < oct; i++) {
-        const s = Math.sin(x * freq * 0.7 + y * freq * 1.3 + seed + i * 11.7);
-        const t = Math.cos(x * freq * 1.1 - y * freq * 0.9 + seed * 2 + i * 7.3);
-        v += (s * t) * amp;
-        max += amp;
-        amp *= 0.5;
-        freq *= 2.03;
+        sum += vnoise(u * px, v * py, px, py, seed + i * 17) * amp;
+        max += amp; amp *= 0.5; px *= 2; py *= 2;
     }
-    return 0.5 + 0.5 * (v / max);
+    return sum / max;
 }
 
-// Make a CanvasTexture that repeats
-function makeTexture(canvasEl, repeat = 2) {
-    const t = new THREE.CanvasTexture(canvasEl);
-    t.wrapS = t.wrapT = THREE.RepeatWrapping;
-    t.repeat.set(repeat, repeat);
-    t.anisotropy = 4;
-    t.colorSpace = THREE.SRGBColorSpace;
-    return t;
+const ridge = (n, k) => Math.max(0, 1 - Math.abs(n - 0.5) * k);
+const sstep = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+
+// Offset brick/cell layout. Returns cell-local coords and distance to the cell edge (tile units).
+const _cell = { bx: 0, by: 0, col: 0, row: 0, d: 0 };
+function cells(u, v, cols, rows, offset = true) {
+    const ry = v * rows, row = Math.floor(ry);
+    const fx = u * cols + (offset && (row & 1) ? 0.5 : 0), col = Math.floor(fx);
+    const bx = fx - col, by = ry - row;
+    _cell.bx = bx; _cell.by = by; _cell.row = row; _cell.col = ((col % cols) + cols) % cols;
+    _cell.d = Math.min(Math.min(bx, 1 - bx) / cols, Math.min(by, 1 - by) / rows);
+    return _cell;
 }
 
-// === BIOME-SPECIFIC TEXTURES ===
+function set(o, r, g, b, er = 0, eg = 0, eb = 0, h = 0.5) {
+    o[0] = r; o[1] = g; o[2] = b; o[3] = er; o[4] = eg; o[5] = eb; o[6] = h;
+}
 
-// Infernal: brimstone with lava cracks
-export function infernalFloor() {
-    if (_cache.has('inf_f')) return _cache.get('inf_f');
-    const { c, ctx } = canvas(512);
-    const img = ctx.createImageData(512, 512);
-    for (let y = 0; y < 512; y++) {
-        for (let x = 0; x < 512; x++) {
-            const n = fbm(x * 0.02, y * 0.02, 5, 3.1);
-            const cracks = Math.max(0, 1 - Math.abs(fbm(x * 0.008, y * 0.008, 3) - 0.5) * 12);
-            const base = n * 90;
-            const i = (y * 512 + x) * 4;
-            if (cracks > 0.5) {
-                img.data[i] = 180 + cracks * 60;
-                img.data[i + 1] = 60 + cracks * 40;
-                img.data[i + 2] = 20;
-            } else {
-                img.data[i] = 50 + base * 0.7;
-                img.data[i + 1] = 20 + base * 0.3;
-                img.data[i + 2] = 15 + base * 0.2;
+// ---------------------------------------------------------------- designs
+const DESIGNS = {
+    infernal: {
+        floor(u, v, o) {
+            const n = fbm(u, v, 5, 8, 11);
+            const c = ridge(fbm(u, v, 3, 4, 23), 22);
+            const lava = sstep(0.6, 0.95, c);
+            const rock = (0.35 + n * 0.65) * (1 - 0.7 * sstep(0.1, 0.6, c));
+            const glow = c * c * c;
+            set(o, 62 * rock + 110 * lava, 44 * rock + 26 * lava, 42 * rock,
+                255 * lava + 70 * glow, 100 * lava + 8 * glow, 14 * lava, 0.3 + n * 0.6 - lava * 0.5);
+        },
+        wall(u, v, o) {
+            const k = cells(u, v, 4, 8);
+            const n = fbm(u, v, 4, 8, 5);
+            const mortar = 1 - sstep(0.004, 0.012, k.d);
+            const tone = (0.5 + 0.5 * hash(k.col, k.row, 3)) * (0.55 + 0.45 * n) * (1 - mortar);
+            const hot = mortar * sstep(0.56, 0.72, fbm(u, v, 3, 4, 41));
+            set(o, 74 * tone + 12, 50 * tone + 8, 52 * tone + 8, 255 * hot, 85 * hot, 12 * hot, (1 - mortar) * (0.6 + 0.4 * n));
+        },
+    },
+    tech: {
+        floor(u, v, o) {
+            const k = cells(u, v, 4, 4, false);
+            const n = fbm(u, v, 4, 16, 7);
+            const h = hash(k.col, k.row, 9);
+            const seam = 1 - sstep(0.003, 0.01, k.d);
+            let tone = (0.7 + 0.3 * n) * (0.85 + 0.3 * h) * (1 - 0.8 * seam);
+            if (h > 0.6 && Math.sin(k.by * Math.PI * 16) > 0) tone *= 0.55;
+            const sq = Math.max(Math.abs(k.bx - 0.5), Math.abs(k.by - 0.5));
+            const ring = h < 0.22 ? 1 - sstep(0.012, 0.03, Math.abs(sq - 0.3)) : 0;
+            const cx = Math.min(k.bx, 1 - k.bx), cy = Math.min(k.by, 1 - k.by);
+            const bolt = Math.hypot(cx - 0.08, cy - 0.08) < 0.035 ? 1 : 0;
+            set(o, 60 * tone + 60 * bolt, 68 * tone + 60 * bolt, 80 * tone + 60 * bolt,
+                50 * ring, 255 * ring, 120 * ring, 0.5 * (1 - seam) + 0.3 * bolt + 0.1 * n);
+        },
+        wall(u, v, o) {
+            const k = cells(u, v, 2, 2, false);
+            const n = fbm(u, v, 4, 16, 13);
+            const seam = 1 - sstep(0.004, 0.012, k.d);
+            let tone = (0.7 + 0.3 * n) * (1 - 0.8 * seam);
+            let r = 46 * tone, g = 52 * tone, b = 62 * tone;
+            if (v > 0.05 && v < 0.11) { // hazard stripe
+                const s = (((u + v) * 24) % 1 + 1) % 1 > 0.5;
+                r = s ? 190 : 20; g = s ? 150 : 18; b = s ? 20 : 16;
             }
-            img.data[i + 3] = 255;
-        }
-    }
-    ctx.putImageData(img, 0, 0);
-    const t = makeTexture(c, 6);
-    _cache.set('inf_f', t);
-    return t;
-}
-export function infernalWall() {
-    if (_cache.has('inf_w')) return _cache.get('inf_w');
-    const { c, ctx } = canvas(256);
-    const img = ctx.createImageData(256, 256);
-    for (let y = 0; y < 256; y++) {
-        for (let x = 0; x < 256; x++) {
-            const brick = Math.floor(y / 32) % 2 === 0 ? 0 : 32;
-            const bx = (x + brick) % 64;
-            const by = y % 32;
-            const edge = (bx < 2 || bx > 62 || by < 1 || by > 30) ? 0.3 : 1;
-            const n = fbm(x * 0.03, y * 0.03, 4);
-            const r = (60 * edge * n + 10) | 0;
-            const g = (20 * edge * n + 5) | 0;
-            const b = (15 * edge * n + 5) | 0;
-            const i = (y * 256 + x) * 4;
-            img.data[i] = r; img.data[i + 1] = g; img.data[i + 2] = b; img.data[i + 3] = 255;
-        }
-    }
-    ctx.putImageData(img, 0, 0);
-    const t = makeTexture(c, 3);
-    _cache.set('inf_w', t);
-    return t;
-}
-
-// Tech Hell: metal grates + green sigils
-export function techFloor() {
-    if (_cache.has('tech_f')) return _cache.get('tech_f');
-    const { c, ctx } = canvas(512);
-    ctx.fillStyle = '#1a1e24'; ctx.fillRect(0, 0, 512, 512);
-    // Grate pattern
-    ctx.strokeStyle = '#0a0d10'; ctx.lineWidth = 3;
-    for (let i = 0; i <= 512; i += 32) {
-        ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, 512); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(512, i); ctx.stroke();
-    }
-    // Rust noise
-    for (let i = 0; i < 400; i++) {
-        ctx.fillStyle = `rgba(80,50,30,${Math.random() * 0.3})`;
-        ctx.fillRect(Math.random() * 512, Math.random() * 512, 2, 2);
-    }
-    // Neon green sigils
-    ctx.strokeStyle = 'rgba(80,255,120,0.4)';
-    ctx.lineWidth = 2;
-    for (let k = 0; k < 3; k++) {
-        const cx = 60 + Math.random() * 400, cy = 60 + Math.random() * 400, s = 40 + Math.random() * 30;
-        ctx.beginPath();
-        for (let a = 0; a < Math.PI * 2; a += Math.PI / 3) {
-            const x = cx + Math.cos(a) * s, y = cy + Math.sin(a) * s;
-            if (a === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-        }
-        ctx.closePath(); ctx.stroke();
-    }
-    const t = makeTexture(c, 4);
-    _cache.set('tech_f', t);
-    return t;
-}
-export function techWall() {
-    if (_cache.has('tech_w')) return _cache.get('tech_w');
-    const { c, ctx } = canvas(256);
-    ctx.fillStyle = '#20242a'; ctx.fillRect(0, 0, 256, 256);
-    // Panel lines
-    ctx.strokeStyle = '#0a0d10'; ctx.lineWidth = 2;
-    for (let i = 0; i < 256; i += 64) {
-        ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(256, i); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, 256); ctx.stroke();
-    }
-    // Rivets
-    ctx.fillStyle = '#404040';
-    for (let y = 0; y < 256; y += 64) for (let x = 0; x < 256; x += 64) {
-        ctx.beginPath(); ctx.arc(x + 8, y + 8, 2, 0, Math.PI * 2); ctx.fill();
-        ctx.beginPath(); ctx.arc(x + 56, y + 56, 2, 0, Math.PI * 2); ctx.fill();
-    }
-    // Vertical pipes
-    ctx.fillStyle = '#2a4858';
-    ctx.fillRect(100, 0, 6, 256);
-    ctx.fillStyle = '#4080a0';
-    ctx.fillRect(101, 0, 2, 256);
-    const t = makeTexture(c, 2);
-    _cache.set('tech_w', t);
-    return t;
-}
-
-// Blood Cathedral: marble with red veins
-export function cathedralFloor() {
-    if (_cache.has('cath_f')) return _cache.get('cath_f');
-    const { c, ctx } = canvas(512);
-    const img = ctx.createImageData(512, 512);
-    for (let y = 0; y < 512; y++) {
-        for (let x = 0; x < 512; x++) {
-            const n = fbm(x * 0.012, y * 0.012, 5, 7.1);
-            const vein = Math.max(0, 1 - Math.abs(fbm(x * 0.006, y * 0.006, 4) - 0.5) * 18);
-            const i = (y * 512 + x) * 4;
-            const base = 180 * n + 40;
-            if (vein > 0.3) {
-                img.data[i] = 120 + vein * 60;
-                img.data[i + 1] = 20;
-                img.data[i + 2] = 20;
-            } else {
-                img.data[i] = base * 0.9;
-                img.data[i + 1] = base * 0.85;
-                img.data[i + 2] = base * 0.8;
+            const du = Math.abs(u - 0.5);
+            const strip = du < 0.014 && ((v * 4) % 1) < 0.82 ? 1 : 0;
+            const halo = (1 - sstep(0.014, 0.06, du)) * 0.25;
+            set(o, r, g, b, 40 * (strip + halo), 190 * (strip + halo), 255 * (strip + halo), 0.5 * (1 - seam) - 0.3 * strip);
+        },
+    },
+    cathedral: {
+        floor(u, v, o) {
+            const k = cells(u, v, 4, 4, false);
+            const n = fbm(u, v, 4, 8, 19);
+            const vein = ridge(fbm(u, v, 4, 4, 29), 20);
+            const inlay = 1 - sstep(0.004, 0.009, k.d);
+            const red = (k.col + k.row) & 1;
+            let r, g, b;
+            if (red) { r = 92 + 70 * vein; g = 26 + 60 * vein; b = 30 + 55 * vein; }
+            else { r = 190 - 80 * vein; g = 176 - 110 * vein; b = 160 - 100 * vein; }
+            const t = 0.75 + 0.25 * n;
+            set(o, r * t * (1 - inlay) + 170 * inlay, g * t * (1 - inlay) + 125 * inlay, b * t * (1 - inlay) + 40 * inlay,
+                45 * inlay, 26 * inlay, 4 * inlay, 0.5 - 0.2 * inlay);
+        },
+        wall(u, v, o) {
+            const k = cells(u, v, 4, 6);
+            const n = fbm(u, v, 4, 8, 31);
+            const mortar = 1 - sstep(0.003, 0.01, k.d);
+            const tone = (0.6 + 0.4 * hash(k.col, k.row, 2)) * (0.6 + 0.4 * n) * (1 - 0.7 * mortar);
+            set(o, 104 * tone, 86 * tone, 80 * tone, 0, 0, 0, (1 - mortar) * 0.7);
+            // Lancet stained-glass window
+            const du = Math.abs(u - 0.5), W = 0.15, y0 = 0.28, ys = 0.6, yt = 0.8;
+            let lim = -1;
+            if (v > y0 && v <= ys) lim = W;
+            else if (v > ys && v < yt) { const q = (v - ys) / (yt - ys); lim = W * Math.sqrt(1 - q * q); }
+            if (lim > 0 && du < lim + 0.012) {
+                if (du > lim - 0.012 || v < y0 + 0.012) { set(o, 24, 20, 20, 0, 0, 0, 0.9); return; }
+                const a = (u + v) * 22, b2 = (u - v) * 22;
+                const fa = a - Math.floor(a), fb = b2 - Math.floor(b2);
+                if (Math.min(fa, 1 - fa, fb, 1 - fb) < 0.07) { set(o, 14, 12, 12, 0, 0, 0, 0.6); return; }
+                const P = [[230, 30, 30], [245, 150, 20], [40, 80, 230], [150, 40, 210], [245, 220, 120]];
+                const c = P[Math.floor(hash(Math.floor(a), Math.floor(b2), 77) * P.length)];
+                const br = 0.75 + 0.25 * hash(Math.floor(a), Math.floor(b2), 5);
+                set(o, c[0] * 0.3, c[1] * 0.3, c[2] * 0.3, c[0] * br, c[1] * br, c[2] * br, 0.3);
             }
-            img.data[i + 3] = 255;
-        }
-    }
-    ctx.putImageData(img, 0, 0);
-    const t = makeTexture(c, 4);
-    _cache.set('cath_f', t);
-    return t;
-}
-export function cathedralWall() {
-    if (_cache.has('cath_w')) return _cache.get('cath_w');
-    const { c, ctx } = canvas(256);
-    ctx.fillStyle = '#4a3838'; ctx.fillRect(0, 0, 256, 256);
-    // Marble vein
-    for (let i = 0; i < 20; i++) {
-        ctx.strokeStyle = `rgba(100,20,20,${0.2 + Math.random() * 0.3})`;
-        ctx.lineWidth = 0.5 + Math.random() * 2;
-        ctx.beginPath();
-        const x = Math.random() * 256, y = Math.random() * 256;
-        ctx.moveTo(x, y);
-        for (let k = 0; k < 20; k++) ctx.lineTo(x + (Math.random() - 0.5) * 80, y + (Math.random() - 0.5) * 80);
-        ctx.stroke();
-    }
-    // Stone block pattern
-    ctx.strokeStyle = 'rgba(20,10,10,0.5)'; ctx.lineWidth = 1;
-    for (let y = 0; y < 256; y += 40) {
-        const off = (y / 40) % 2 === 0 ? 0 : 32;
-        for (let x = -off; x < 256; x += 64) {
-            ctx.strokeRect(x, y, 64, 40);
-        }
-    }
-    const t = makeTexture(c, 2);
-    _cache.set('cath_w', t);
-    return t;
-}
-
-// Void: starfield-ish black panels
-export function voidFloor() {
-    if (_cache.has('void_f')) return _cache.get('void_f');
-    const { c, ctx } = canvas(512);
-    ctx.fillStyle = '#060008'; ctx.fillRect(0, 0, 512, 512);
-    // Hex pattern faint
-    ctx.strokeStyle = 'rgba(80,40,120,0.2)'; ctx.lineWidth = 1;
-    const hex = 32;
-    for (let r = 0; r < 20; r++) for (let q = 0; q < 20; q++) {
-        const cx = q * hex * 1.5 + (r % 2) * hex * 0.75;
-        const cy = r * hex * 0.87;
-        ctx.beginPath();
-        for (let a = 0; a < 6; a++) {
-            const x = cx + Math.cos(a / 6 * Math.PI * 2) * hex / 2;
-            const y = cy + Math.sin(a / 6 * Math.PI * 2) * hex / 2;
-            if (a === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-        }
-        ctx.closePath(); ctx.stroke();
-    }
-    // Star points
-    for (let i = 0; i < 80; i++) {
-        ctx.fillStyle = `rgba(200,180,255,${0.3 + Math.random() * 0.5})`;
-        ctx.fillRect(Math.random() * 512, Math.random() * 512, 1, 1);
-    }
-    const t = makeTexture(c, 3);
-    _cache.set('void_f', t);
-    return t;
-}
-export function voidWall() {
-    if (_cache.has('void_w')) return _cache.get('void_w');
-    const { c, ctx } = canvas(256);
-    ctx.fillStyle = '#0a0612'; ctx.fillRect(0, 0, 256, 256);
-    ctx.strokeStyle = 'rgba(120,60,200,0.4)'; ctx.lineWidth = 1;
-    for (let i = 0; i < 256; i += 32) {
-        ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, 256); ctx.stroke();
-    }
-    // Glowing seams
-    const grad = ctx.createLinearGradient(0, 0, 0, 256);
-    grad.addColorStop(0, 'rgba(180,80,255,0.3)');
-    grad.addColorStop(0.5, 'rgba(60,20,100,0.1)');
-    grad.addColorStop(1, 'rgba(180,80,255,0.3)');
-    ctx.fillStyle = grad;
-    ctx.fillRect(126, 0, 4, 256);
-    const t = makeTexture(c, 2);
-    _cache.set('void_w', t);
-    return t;
-}
-
-// Cryo: ice crystals + frost
-export function cryoFloor() {
-    if (_cache.has('cryo_f')) return _cache.get('cryo_f');
-    const { c, ctx } = canvas(512);
-    const img = ctx.createImageData(512, 512);
-    for (let y = 0; y < 512; y++) {
-        for (let x = 0; x < 512; x++) {
-            const n = fbm(x * 0.02, y * 0.02, 5, 2.4);
-            const i = (y * 512 + x) * 4;
-            img.data[i] = 160 + n * 50;
-            img.data[i + 1] = 200 + n * 40;
-            img.data[i + 2] = 230 + n * 25;
-            img.data[i + 3] = 255;
-        }
-    }
-    ctx.putImageData(img, 0, 0);
-    // Crystal lines
-    ctx.strokeStyle = 'rgba(255,255,255,0.4)';
-    for (let i = 0; i < 30; i++) {
-        ctx.lineWidth = 0.5 + Math.random() * 1.5;
-        ctx.beginPath();
-        const x = Math.random() * 512, y = Math.random() * 512;
-        for (let k = 0; k < 3; k++) {
-            ctx.moveTo(x, y);
-            ctx.lineTo(x + (Math.random() - 0.5) * 80, y + (Math.random() - 0.5) * 80);
-        }
-        ctx.stroke();
-    }
-    const t = makeTexture(c, 5);
-    _cache.set('cryo_f', t);
-    return t;
-}
-export function cryoWall() {
-    if (_cache.has('cryo_w')) return _cache.get('cryo_w');
-    const { c, ctx } = canvas(256);
-    ctx.fillStyle = '#4a6878'; ctx.fillRect(0, 0, 256, 256);
-    // Ice shard triangles
-    for (let i = 0; i < 40; i++) {
-        ctx.fillStyle = `rgba(200,230,255,${0.1 + Math.random() * 0.3})`;
-        ctx.beginPath();
-        const x = Math.random() * 256, y = Math.random() * 256;
-        const s = 10 + Math.random() * 30;
-        ctx.moveTo(x, y);
-        ctx.lineTo(x + s, y + s * 2);
-        ctx.lineTo(x - s * 0.5, y + s * 1.5);
-        ctx.closePath(); ctx.fill();
-    }
-    // Horizontal veins
-    for (let y = 0; y < 256; y += 32) {
-        ctx.strokeStyle = 'rgba(255,255,255,0.15)'; ctx.lineWidth = 1;
-        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(256, y); ctx.stroke();
-    }
-    const t = makeTexture(c, 2);
-    _cache.set('cryo_w', t);
-    return t;
-}
-
-// Ash Wastes: cracked clay + ash falling
-export function ashFloor() {
-    if (_cache.has('ash_f')) return _cache.get('ash_f');
-    const { c, ctx } = canvas(512);
-    const img = ctx.createImageData(512, 512);
-    for (let y = 0; y < 512; y++) {
-        for (let x = 0; x < 512; x++) {
-            const n = fbm(x * 0.025, y * 0.025, 5, 9.8);
-            const crack = Math.max(0, 1 - Math.abs(fbm(x * 0.01, y * 0.01, 3) - 0.5) * 20);
-            const i = (y * 512 + x) * 4;
-            const base = n * 80;
-            if (crack > 0.5) {
-                img.data[i] = 20; img.data[i + 1] = 10; img.data[i + 2] = 10;
-            } else {
-                img.data[i] = 110 + base * 0.6;
-                img.data[i + 1] = 70 + base * 0.4;
-                img.data[i + 2] = 50 + base * 0.3;
+        },
+    },
+    void: {
+        floor(u, v, o) {
+            const n = fbm(u, v, 3, 8, 37);
+            const gu = Math.abs(((u * 4 + 0.5) % 1) - 0.5) / 4, gv = Math.abs(((v * 4 + 0.5) % 1) - 0.5) / 4;
+            const d = Math.min(gu, gv);
+            const line = 1 - sstep(0.002, 0.005, d), halo = (1 - sstep(0.004, 0.03, d)) * 0.22;
+            const star = hash(Math.floor(u * 256), Math.floor(v * 256), 51) > 0.9985 ? 0.6 : 0;
+            const e = line + halo;
+            set(o, 10 + 8 * n, 6 + 5 * n, 18 + 12 * n, 150 * e + 220 * star, 70 * e + 200 * star, 255 * e + 255 * star, 0.5 - 0.3 * line);
+        },
+        wall(u, v, o) {
+            const n = fbm(u, v, 3, 8, 43);
+            const k = cells(u, v, 4, 4, false);
+            const d = Math.abs(((u * 4 + 0.5) % 1) - 0.5) / 4;
+            const seam = 1 - sstep(0.003, 0.007, d), halo = (1 - sstep(0.006, 0.04, d)) * 0.2;
+            const band = 1 - sstep(0.004, 0.009, Math.abs(v - 0.5));
+            const lit = hash(k.col, k.row, 61) > 0.82 ? 0.12 : 0;
+            const e = seam + halo + lit;
+            set(o, 16 + 8 * n, 10 + 6 * n, 28 + 12 * n, 150 * e + 255 * band, 70 * e + 60 * band, 255 * e + 200 * band, 0.5 - 0.3 * seam);
+        },
+    },
+    cryo: {
+        floor(u, v, o) {
+            const n = fbm(u, v, 5, 8, 47);
+            const deep = fbm(u, v, 2, 3, 53);
+            const c = ridge(fbm(u, v, 3, 5, 59), 26);
+            const t = (0.6 + 0.4 * n) * (0.7 + 0.3 * deep);
+            set(o, 130 * t + 110 * c, 180 * t + 70 * c, 215 * t + 40 * c, 30 * c, 110 * c, 150 * c, 0.4 + 0.3 * n - 0.4 * c);
+        },
+        wall(u, v, o) {
+            const k = cells(u, v, 2, 3);
+            const n = fbm(u, v, 4, 8, 67);
+            const streak = fbm(u, v, 3, 24, 71, 2);
+            const edge = 1 - sstep(0.004, 0.02, k.d);
+            const t = (0.55 + 0.45 * n) * (0.7 + 0.3 * streak);
+            const core = sstep(0.55, 0.8, n) * 0.5;
+            set(o, 96 * t + 130 * edge, 142 * t + 95 * edge, 182 * t + 60 * edge, 20 * core, 90 * core, 130 * core, 0.5 * (1 - edge) + 0.3 * streak);
+        },
+    },
+    ash: {
+        floor(u, v, o) { // grey ash drifts over cracked clay; only a few fissures still glow
+            const n = fbm(u, v, 5, 8, 73);
+            const c = ridge(fbm(u, v, 3, 6, 79), 26);
+            const crack = sstep(0.5, 0.85, c);
+            const hot = crack * sstep(0.6, 0.74, fbm(u, v, 2, 3, 83));
+            const dust = sstep(0.42, 0.7, fbm(u, v, 3, 4, 89));
+            const t = (0.6 + 0.4 * n) * (1 - 0.85 * crack);
+            set(o, (104 - 30 * dust) * t + 62 * dust, (72 - 14 * dust) * t + 58 * dust, (54 - 2 * dust) * t + 56 * dust,
+                255 * hot, 80 * hot, 8 * hot, 0.4 + 0.4 * n - 0.5 * crack + 0.15 * dust);
+        },
+        wall(u, v, o) {
+            const n = fbm(u, v, 4, 8, 97);
+            const layer = 0.5 + 0.5 * Math.sin(v * Math.PI * 2 * 7 + n * 7);
+            const crack = sstep(0.75, 0.95, ridge(fbm(u, v, 3, 6, 101, 2), 16));
+            const t = (0.55 + 0.45 * n) * (1 - 0.45 * crack);
+            set(o, (78 + 44 * layer) * t, (46 + 24 * layer) * t, (34 + 14 * layer) * t, 0, 0, 0, 0.3 + 0.4 * layer - 0.4 * crack);
+        },
+    },
+    bone: {
+        floor(u, v, o) {
+            const n = fbm(u, v, 5, 8, 103);
+            const p = fbm(u, v, 3, 4, 107);
+            const pud = 1 - sstep(0.27, 0.33, p);
+            const t = 0.55 + 0.45 * n;
+            set(o, 58 * t * (1 - pud) + 16 * pud, 62 * t * (1 - pud) + 30 * pud, 38 * t * (1 - pud) + 18 * pud,
+                8 * pud, 44 * pud, 8 * pud, (0.5 + 0.4 * n) * (1 - pud) + 0.1 * pud);
+        },
+        wall(u, v, o) {
+            const k = cells(u, v, 8, 10);
+            const cx = k.bx - 0.5, cy = k.by - 0.5;
+            const hs = hash(k.col, k.row, 113);
+            const cran = (cx * cx) / (0.42 * 0.42) + ((cy - 0.08) * (cy - 0.08)) / (0.36 * 0.36);
+            const jaw = Math.abs(cx) < 0.2 && cy < -0.15 && cy > -0.46;
+            if (cran >= 1 && !jaw) { set(o, 20, 17, 12, 0, 0, 0, 0.05); return; }
+            const ex = Math.abs(cx) - 0.17, ey = cy - 0.04, er = Math.hypot(ex, ey);
+            const nose = Math.abs(cx) < 0.045 * (1 - (cy + 0.2) / 0.14) && cy > -0.2 && cy < -0.06;
+            const teeth = jaw && cy < -0.3 && ((cx * 14) % 1 + 1) % 1 < 0.2;
+            if (er < 0.105 || nose || teeth) {
+                const g = hs > 0.72 && er < 0.055 ? 1 : 0;
+                set(o, 12, 10, 8, 50 * g, 255 * g, 40 * g, 0.1);
+                return;
             }
-            img.data[i + 3] = 255;
+            const sh = (0.62 + 0.38 * hs) * (jaw ? 0.85 : 1.05 - 0.35 * Math.min(1, cran));
+            set(o, 196 * sh, 184 * sh, 152 * sh, 0, 0, 0, jaw ? 0.6 : 1 - 0.5 * cran);
+        },
+    },
+};
+
+// ---------------------------------------------------------------- baking
+function bake(fn, size, withNormal) {
+    const mk = () => { const c = document.createElement('canvas'); c.width = c.height = size; return c; };
+    const cA = mk(), cE = mk();
+    const gA = cA.getContext('2d'), gE = cE.getContext('2d');
+    const iA = gA.createImageData(size, size), iE = gE.createImageData(size, size);
+    const H = new Float32Array(size * size);
+    const o = new Float32Array(7);
+    for (let y = 0; y < size; y++) {
+        const v = 1 - (y + 0.5) / size;
+        for (let x = 0; x < size; x++) {
+            fn((x + 0.5) / size, v, o);
+            const i = (y * size + x) * 4;
+            iA.data[i] = o[0]; iA.data[i + 1] = o[1]; iA.data[i + 2] = o[2]; iA.data[i + 3] = 255;
+            iE.data[i] = o[3]; iE.data[i + 1] = o[4]; iE.data[i + 2] = o[5]; iE.data[i + 3] = 255;
+            H[y * size + x] = o[6];
         }
     }
-    ctx.putImageData(img, 0, 0);
-    const t = makeTexture(c, 6);
-    _cache.set('ash_f', t);
-    return t;
-}
-export function ashWall() {
-    if (_cache.has('ash_w')) return _cache.get('ash_w');
-    const { c, ctx } = canvas(256);
-    const img = ctx.createImageData(256, 256);
-    for (let y = 0; y < 256; y++) {
-        for (let x = 0; x < 256; x++) {
-            const n = fbm(x * 0.03, y * 0.03, 4, 4.2);
-            const i = (y * 256 + x) * 4;
-            img.data[i] = 90 + n * 50;
-            img.data[i + 1] = 50 + n * 30;
-            img.data[i + 2] = 35 + n * 20;
-            img.data[i + 3] = 255;
+    gA.putImageData(iA, 0, 0); gE.putImageData(iE, 0, 0);
+    const tex = (c, srgb) => {
+        const t = new THREE.CanvasTexture(c);
+        t.wrapS = t.wrapT = THREE.RepeatWrapping;
+        t.anisotropy = 4;
+        if (srgb) t.colorSpace = THREE.SRGBColorSpace;
+        return t;
+    };
+    const out = { map: tex(cA, true), emissiveMap: tex(cE, true), normalMap: null };
+    if (withNormal) {
+        const cN = mk(), gN = cN.getContext('2d'), iN = gN.createImageData(size, size);
+        const S = 3.0;
+        for (let y = 0; y < size; y++) {
+            const yu = (y - 1 + size) % size, yd = (y + 1) % size;
+            for (let x = 0; x < size; x++) {
+                const xl = (x - 1 + size) % size, xr = (x + 1) % size;
+                const nx = -(H[y * size + xr] - H[y * size + xl]) * S;
+                const ny = -(H[yu * size + x] - H[yd * size + x]) * S;
+                const l = Math.hypot(nx, ny, 1), i = (y * size + x) * 4;
+                iN.data[i] = (nx / l * 0.5 + 0.5) * 255;
+                iN.data[i + 1] = (ny / l * 0.5 + 0.5) * 255;
+                iN.data[i + 2] = (1 / l * 0.5 + 0.5) * 255;
+                iN.data[i + 3] = 255;
+            }
         }
+        gN.putImageData(iN, 0, 0);
+        out.normalMap = tex(cN, false);
     }
-    ctx.putImageData(img, 0, 0);
-    // Horizontal cracks
-    ctx.strokeStyle = 'rgba(10,5,5,0.6)'; ctx.lineWidth = 1;
-    for (let i = 0; i < 20; i++) {
-        ctx.beginPath();
-        const y = Math.random() * 256;
-        ctx.moveTo(0, y);
-        for (let x = 0; x < 256; x += 20) ctx.lineTo(x, y + (Math.random() - 0.5) * 6);
-        ctx.stroke();
-    }
-    const t = makeTexture(c, 2);
-    _cache.set('ash_w', t);
-    return t;
+    return out;
 }
 
-// Normal-map generator from any grayscale heightmap
-export function normalFromTexture(tex, strength = 1.0) {
-    const srcCanvas = tex.image;
-    const w = srcCanvas.width, h = srcCanvas.height;
-    const { c, ctx } = canvas(w);
-    c.height = h;
-    const srcCtx = srcCanvas.getContext('2d');
-    const src = srcCtx.getImageData(0, 0, w, h).data;
-    const out = ctx.createImageData(w, h);
-    const lum = (i) => (src[i] + src[i + 1] + src[i + 2]) / 3;
-    for (let y = 0; y < h; y++) {
-        for (let x = 0; x < w; x++) {
-            const i = (y * w + x) * 4;
-            const xL = ((x - 1 + w) % w), xR = ((x + 1) % w);
-            const yU = ((y - 1 + h) % h), yD = ((y + 1) % h);
-            const dx = (lum((y * w + xR) * 4) - lum((y * w + xL) * 4)) * strength;
-            const dy = (lum((yD * w + x) * 4) - lum((yU * w + x) * 4)) * strength;
-            const nx = -dx / 255, ny = -dy / 255, nz = 1;
-            const l = Math.hypot(nx, ny, nz);
-            out.data[i] = (nx / l * 0.5 + 0.5) * 255;
-            out.data[i + 1] = (ny / l * 0.5 + 0.5) * 255;
-            out.data[i + 2] = (nz / l * 0.5 + 0.5) * 255;
-            out.data[i + 3] = 255;
-        }
+// Returns { floor: {map, emissiveMap, normalMap}, wall: {...} }, cached per biome + quality.
+export function biomeTextures(id, low = false) {
+    const key = id + (low ? ':low' : '');
+    if (!_cache.has(key)) {
+        const d = DESIGNS[id];
+        _cache.set(key, {
+            floor: bake(d.floor, low ? 256 : 512, !low),
+            wall: bake(d.wall, low ? 128 : 256, !low),
+        });
     }
-    ctx.putImageData(out, 0, 0);
-    const t = new THREE.CanvasTexture(c);
-    t.wrapS = t.wrapT = THREE.RepeatWrapping;
-    t.repeat.copy(tex.repeat);
-    return t;
+    return _cache.get(key);
 }

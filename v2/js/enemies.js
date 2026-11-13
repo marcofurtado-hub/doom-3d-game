@@ -1,14 +1,15 @@
 import * as THREE from 'three';
+import { P, box, cone, cyl, ball, merge, both } from './geo.js';
 
 // Enemy definitions — 5+ types with distinct silhouettes and behavior.
 
 export const EDEF = {
-    imp:    { r: 0.7, spd: 3.3, hp: 22, dmg: 16, sc: 55,  col: 0xb02010, eye: 0xff4444, build: 'imp' },
-    skull:  { r: 0.4, spd: 5.2, hp: 10, dmg: 10, sc: 30,  col: 0xb8a898, eye: 0xff2222, build: 'skull', flying: true },
-    demon:  { r: 0.85, spd: 4.0, hp: 42, dmg: 24, sc: 110, col: 0xaa3366, eye: 0xff66ff, build: 'demon' },
-    caco:   { r: 1.0, spd: 2.4, hp: 55, dmg: 18, sc: 160, col: 0xcc4444, eye: 0x44ff44, build: 'caco', flying: true, ranged: true, fRate: 1.2, projColor: 0x44ff44 },
-    baron:  { r: 1.0, spd: 2.7, hp: 85, dmg: 32, sc: 280, col: 0x446622, eye: 0xff6600, build: 'baron', ranged: true, fRate: 1.6, projColor: 0xff6600 },
-    revenant:{ r: 0.75, spd: 3.5, hp: 40, dmg: 20, sc: 140, col: 0xc0b8a8, eye: 0xff4040, build: 'revenant', ranged: true, fRate: 2.0, projColor: 0xff4040, tracking: true },
+    imp:    { r: 0.7, spd: 3.6, hp: 30, dmg: 12, sc: 55,  col: 0xb02010, eye: 0xff4444, build: 'imp' },
+    skull:  { r: 0.45, spd: 6.0, hp: 14, dmg: 8, sc: 30,  col: 0xb8a898, eye: 0xff2222, build: 'skull', flying: true },
+    demon:  { r: 0.85, spd: 4.2, hp: 70, dmg: 20, charger: true, sc: 110, col: 0xaa3366, eye: 0xff66ff, build: 'demon' },
+    caco:   { r: 1.0, spd: 2.6, hp: 80, dmg: 14, sc: 160, col: 0xcc4444, eye: 0x44ff44, build: 'caco', flying: true, ranged: true, fRate: 1.2, projColor: 0x44ff44 },
+    baron:  { r: 1.0, spd: 3.0, hp: 150, dmg: 22, sc: 280, col: 0x446622, eye: 0xff6600, build: 'baron', ranged: true, fRate: 1.6, projColor: 0xff6600 },
+    revenant:{ r: 0.75, spd: 3.6, hp: 70, dmg: 16, sc: 140, col: 0xc0b8a8, eye: 0xff4040, build: 'revenant', ranged: true, fRate: 2.0, projColor: 0xff4040, tracking: true },
 };
 
 export const BDEF = [
@@ -24,356 +25,251 @@ export const BDEF = [
     { name: 'DARK LORD',    r: 2.1, spd: 1.2, hp: 3500, dmg: 26, sc: 10000, col: 0x3a0a0a, eye: 0xffff00, pat: 'all',    fRate: 0.4, build: 'cyber', div: true, dI: 'baron' },
 ];
 
-// ===== BUILDERS =====
-function mkStd(color, emissive) {
-    return new THREE.MeshStandardMaterial({ color, emissive: emissive || 0x000000, emissiveIntensity: 0.5, roughness: 0.6, metalness: 0.1 });
-}
-function mkEye(color) {
-    return new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 3, roughness: 0.2 });
-}
+// ===== MODELS =====
+// Each build is authored at unit radius from primitives, then merged into one geometry per material
+// (body / dark trim / bone / glow) plus separate limbs for animation. Templates are cached and shared
+// by every enemy of that build: ~6 draw calls per enemy, zero geometry allocation at spawn time.
 
-function buildImp(def) {
-    const g = new THREE.Group();
-    const bodyMat = mkStd(def.col, 0x200404);
-    // Torso
-    const torso = new THREE.Mesh(new THREE.BoxGeometry(def.r * 1.2, def.r * 1.3, def.r * 0.8), bodyMat);
-    torso.position.y = def.r * 1.4;
-    torso.castShadow = true; g.add(torso);
-    // Head
-    const head = new THREE.Mesh(new THREE.BoxGeometry(def.r * 0.9, def.r * 0.8, def.r * 0.9), bodyMat);
-    head.position.y = def.r * 2.3;
-    head.castShadow = true; g.add(head);
-    // Horns
-    const hornMat = mkStd(0x1a0808);
-    for (const s of [-1, 1]) {
-        const h = new THREE.Mesh(new THREE.ConeGeometry(def.r * 0.12, def.r * 0.4, 5), hornMat);
-        h.position.set(s * def.r * 0.3, def.r * 2.75, 0);
-        h.rotation.z = s * 0.3;
-        g.add(h);
-    }
-    // Eyes
-    const eyeMat = mkEye(def.eye);
-    for (const s of [-1, 1]) {
-        const e = new THREE.Mesh(new THREE.SphereGeometry(def.r * 0.1, 6, 5), eyeMat);
-        e.position.set(s * def.r * 0.25, def.r * 2.3, def.r * 0.42);
-        g.add(e);
-    }
-    // Arms
-    for (const s of [-1, 1]) {
-        const arm = new THREE.Mesh(new THREE.BoxGeometry(def.r * 0.32, def.r * 1.1, def.r * 0.32), bodyMat);
-        arm.position.set(s * def.r * 0.8, def.r * 1.3, 0);
-        arm.castShadow = true; g.add(arm);
-    }
-    // Legs
-    for (const s of [-1, 1]) {
-        const leg = new THREE.Mesh(new THREE.BoxGeometry(def.r * 0.42, def.r * 0.8, def.r * 0.42), bodyMat);
-        leg.position.set(s * def.r * 0.3, def.r * 0.4, 0);
-        leg.castShadow = true; g.add(leg);
-        g.userData.legs = g.userData.legs || [];
-        g.userData.legs.push(leg);
-    }
-    g.userData.height = def.r * 2.7;
-    g.userData.eyeMat = eyeMat;
-    g.userData.head = head;
-    return g;
-}
+// A limb: geometry with its pivot at the origin, attached at (x, y, z)
+const limb = (parts, x, y, z) => ({ geo: merge(parts), x, y, z });
 
-function buildSkull(def) {
-    const g = new THREE.Group();
-    const bodyMat = mkStd(def.col, 0x101010);
-    const skull = new THREE.Mesh(new THREE.BoxGeometry(def.r * 1.6, def.r * 1.6, def.r * 1.4), bodyMat);
-    skull.castShadow = true;
-    g.add(skull);
-    // Jaw
-    const jaw = new THREE.Mesh(new THREE.BoxGeometry(def.r * 1.4, def.r * 0.4, def.r * 1.2), bodyMat);
-    jaw.position.set(0, -def.r * 0.7, def.r * 0.1);
-    g.add(jaw);
-    // Eye sockets (emissive)
-    const eyeMat = mkEye(def.eye);
-    for (const s of [-1, 1]) {
-        const e = new THREE.Mesh(new THREE.BoxGeometry(def.r * 0.3, def.r * 0.4, def.r * 0.2), eyeMat);
-        e.position.set(s * def.r * 0.4, def.r * 0.2, def.r * 0.7);
-        g.add(e);
-    }
-    // Floating effect uses y offset from spawn
-    g.userData.height = def.r * 1.6;
-    g.userData.eyeMat = eyeMat;
-    return g;
-}
-
-function buildDemon(def) {
-    const g = new THREE.Group();
-    const bodyMat = mkStd(def.col, 0x200820);
-    // Hulking body (wider, lower)
-    const body = new THREE.Mesh(new THREE.BoxGeometry(def.r * 1.8, def.r * 1.2, def.r * 1.4), bodyMat);
-    body.position.y = def.r * 1.2;
-    body.castShadow = true; g.add(body);
-    // Head big + fat
-    const head = new THREE.Mesh(new THREE.BoxGeometry(def.r * 1.3, def.r * 1.0, def.r * 1.1), bodyMat);
-    head.position.y = def.r * 2.2;
-    head.castShadow = true; g.add(head);
-    // Huge jaws (open)
-    const mouth = new THREE.Mesh(new THREE.BoxGeometry(def.r * 1.1, def.r * 0.3, def.r * 0.6),
-        new THREE.MeshStandardMaterial({ color: 0x300818, emissive: 0x600820, emissiveIntensity: 2 }));
-    mouth.position.set(0, def.r * 2, def.r * 0.4);
-    g.add(mouth);
-    // Teeth
-    const teethMat = mkStd(0xeeeedd);
-    for (let i = -2; i <= 2; i++) {
-        const t = new THREE.Mesh(new THREE.ConeGeometry(def.r * 0.07, def.r * 0.18, 4), teethMat);
-        t.position.set(i * def.r * 0.18, def.r * 2.08, def.r * 0.56);
-        g.add(t);
-    }
-    // Eyes
-    const eyeMat = mkEye(def.eye);
-    for (const s of [-1, 1]) {
-        const e = new THREE.Mesh(new THREE.SphereGeometry(def.r * 0.14, 7, 6), eyeMat);
-        e.position.set(s * def.r * 0.35, def.r * 2.5, def.r * 0.55);
-        g.add(e);
-    }
-    // Stumpy legs
-    for (const s of [-1, 1]) {
-        const leg = new THREE.Mesh(new THREE.BoxGeometry(def.r * 0.5, def.r * 0.8, def.r * 0.5), bodyMat);
-        leg.position.set(s * def.r * 0.5, def.r * 0.4, 0);
-        leg.castShadow = true; g.add(leg);
-        g.userData.legs = g.userData.legs || [];
-        g.userData.legs.push(leg);
-    }
-    g.userData.height = def.r * 2.7;
-    g.userData.eyeMat = eyeMat;
-    return g;
-}
-
-function buildCaco(def) {
-    const g = new THREE.Group();
-    const bodyMat = mkStd(def.col, 0x400808);
-    // Spherical bloated body
-    const body = new THREE.Mesh(new THREE.SphereGeometry(def.r, 12, 10), bodyMat);
-    body.scale.set(1.3, 1.0, 1.3);
-    body.castShadow = true;
-    g.add(body);
-    // Horns
-    const hornMat = mkStd(0x1a0808);
-    for (let i = 0; i < 4; i++) {
-        const a = (i / 4) * Math.PI * 2;
-        const h = new THREE.Mesh(new THREE.ConeGeometry(def.r * 0.15, def.r * 0.5, 5), hornMat);
-        h.position.set(Math.cos(a) * def.r * 0.9, def.r * 0.7, Math.sin(a) * def.r * 0.9);
-        h.rotation.z = -Math.cos(a) * 0.5;
-        h.rotation.x = Math.sin(a) * 0.5;
-        g.add(h);
-    }
-    // Giant central eye
-    const eyeMat = mkEye(def.eye);
-    const eye = new THREE.Mesh(new THREE.SphereGeometry(def.r * 0.35, 10, 8), eyeMat);
-    eye.position.set(0, 0, def.r * 1.1);
-    g.add(eye);
-    // Mouth
-    const mouth = new THREE.Mesh(new THREE.BoxGeometry(def.r * 0.7, def.r * 0.2, def.r * 0.3),
-        new THREE.MeshStandardMaterial({ color: 0x100204, emissive: 0x400408, emissiveIntensity: 2 }));
-    mouth.position.set(0, -def.r * 0.5, def.r * 1.1);
-    g.add(mouth);
-    g.userData.height = def.r * 1.3;
-    g.userData.eyeMat = eyeMat;
-    g.userData.hover = true;
-    return g;
-}
-
-function buildBaron(def) {
-    const g = new THREE.Group();
-    const bodyMat = mkStd(def.col, 0x081808);
-    // Tall muscular torso
-    const torso = new THREE.Mesh(new THREE.BoxGeometry(def.r * 1.4, def.r * 1.6, def.r * 1.0), bodyMat);
-    torso.position.y = def.r * 1.8;
-    torso.castShadow = true; g.add(torso);
-    // Goat head
-    const head = new THREE.Mesh(new THREE.BoxGeometry(def.r * 1.0, def.r * 1.0, def.r * 1.3), bodyMat);
-    head.position.y = def.r * 3.0;
-    head.castShadow = true; g.add(head);
-    // Massive curved horns
-    const hornMat = mkStd(0x080808);
-    for (const s of [-1, 1]) {
-        const horn = new THREE.Mesh(new THREE.ConeGeometry(def.r * 0.14, def.r * 0.8, 6), hornMat);
-        horn.position.set(s * def.r * 0.4, def.r * 3.5, 0);
-        horn.rotation.z = s * 0.5;
-        g.add(horn);
-    }
-    // Eyes
-    const eyeMat = mkEye(def.eye);
-    for (const s of [-1, 1]) {
-        const e = new THREE.Mesh(new THREE.SphereGeometry(def.r * 0.1, 7, 6), eyeMat);
-        e.position.set(s * def.r * 0.25, def.r * 3.1, def.r * 0.6);
-        g.add(e);
-    }
-    // Arms (hanging long)
-    for (const s of [-1, 1]) {
-        const arm = new THREE.Mesh(new THREE.BoxGeometry(def.r * 0.4, def.r * 1.6, def.r * 0.4), bodyMat);
-        arm.position.set(s * def.r * 0.9, def.r * 1.6, 0);
-        arm.castShadow = true; g.add(arm);
-        // Clawed hand
-        const hand = new THREE.Mesh(new THREE.BoxGeometry(def.r * 0.5, def.r * 0.3, def.r * 0.5),
-            mkStd(0x200804, 0x200408));
-        hand.position.set(s * def.r * 0.9, def.r * 0.7, 0);
-        g.add(hand);
-    }
-    // Hoofs
-    for (const s of [-1, 1]) {
-        const leg = new THREE.Mesh(new THREE.BoxGeometry(def.r * 0.5, def.r * 1.0, def.r * 0.5), bodyMat);
-        leg.position.set(s * def.r * 0.3, def.r * 0.5, 0);
-        leg.castShadow = true; g.add(leg);
-        g.userData.legs = g.userData.legs || [];
-        g.userData.legs.push(leg);
-    }
-    g.userData.height = def.r * 3.5;
-    g.userData.eyeMat = eyeMat;
-    return g;
-}
-
-function buildRevenant(def) {
-    const g = new THREE.Group();
-    const bodyMat = mkStd(def.col, 0x200404);
-    // Skeletal torso
-    const torso = new THREE.Mesh(new THREE.BoxGeometry(def.r * 1.1, def.r * 1.6, def.r * 0.6), bodyMat);
-    torso.position.y = def.r * 1.7;
-    torso.castShadow = true; g.add(torso);
-    // Skull head
-    const head = new THREE.Mesh(new THREE.BoxGeometry(def.r * 0.85, def.r * 0.9, def.r * 0.9), bodyMat);
-    head.position.y = def.r * 2.8;
-    head.castShadow = true; g.add(head);
-    const eyeMat = mkEye(def.eye);
-    for (const s of [-1, 1]) {
-        const e = new THREE.Mesh(new THREE.BoxGeometry(def.r * 0.18, def.r * 0.3, def.r * 0.12), eyeMat);
-        e.position.set(s * def.r * 0.22, def.r * 2.85, def.r * 0.45);
-        g.add(e);
-    }
-    // Shoulder-mounted missile pods
-    const podMat = mkStd(0x4a2a1a, 0x200408);
-    for (const s of [-1, 1]) {
-        const pod = new THREE.Mesh(new THREE.BoxGeometry(def.r * 0.45, def.r * 0.4, def.r * 0.7), podMat);
-        pod.position.set(s * def.r * 0.7, def.r * 2.5, -def.r * 0.1);
-        pod.castShadow = true; g.add(pod);
-    }
-    // Arms (bony)
-    for (const s of [-1, 1]) {
-        const arm = new THREE.Mesh(new THREE.BoxGeometry(def.r * 0.25, def.r * 1.2, def.r * 0.25), bodyMat);
-        arm.position.set(s * def.r * 0.75, def.r * 1.7, 0);
-        arm.castShadow = true; g.add(arm);
-    }
-    // Legs
-    for (const s of [-1, 1]) {
-        const leg = new THREE.Mesh(new THREE.BoxGeometry(def.r * 0.3, def.r * 0.9, def.r * 0.3), bodyMat);
-        leg.position.set(s * def.r * 0.3, def.r * 0.45, 0);
-        leg.castShadow = true; g.add(leg);
-        g.userData.legs = g.userData.legs || [];
-        g.userData.legs.push(leg);
-    }
-    g.userData.height = def.r * 3.3;
-    g.userData.eyeMat = eyeMat;
-    return g;
-}
-
-function buildCyber(def) {
-    const g = new THREE.Group();
-    const bodyMat = mkStd(def.col, 0x200408);
-    // Huge torso
-    const torso = new THREE.Mesh(new THREE.BoxGeometry(def.r * 1.8, def.r * 1.8, def.r * 1.2), bodyMat);
-    torso.position.y = def.r * 2.0;
-    torso.castShadow = true; g.add(torso);
-    // Bull head
-    const head = new THREE.Mesh(new THREE.BoxGeometry(def.r * 1.1, def.r * 1.0, def.r * 1.3), bodyMat);
-    head.position.y = def.r * 3.2;
-    head.castShadow = true; g.add(head);
-    // Horns
-    const hornMat = mkStd(0x080808);
-    for (const s of [-1, 1]) {
-        const h = new THREE.Mesh(new THREE.ConeGeometry(def.r * 0.18, def.r * 0.6, 5), hornMat);
-        h.position.set(s * def.r * 0.5, def.r * 3.6, 0);
-        h.rotation.z = s * 0.4;
-        g.add(h);
-    }
-    const eyeMat = mkEye(def.eye);
-    const eye = new THREE.Mesh(new THREE.SphereGeometry(def.r * 0.2, 8, 7), eyeMat);
-    eye.position.set(0, def.r * 3.2, def.r * 0.65);
-    g.add(eye);
-    // Rocket launcher arm (right)
-    const rl = new THREE.Mesh(new THREE.CylinderGeometry(def.r * 0.25, def.r * 0.25, def.r * 1.4, 10), mkStd(0x1a1a1a, 0x100408));
-    rl.rotation.x = Math.PI / 2;
-    rl.position.set(def.r * 1.0, def.r * 1.8, 0);
-    g.add(rl);
-    // Normal arm (left)
-    const arm = new THREE.Mesh(new THREE.BoxGeometry(def.r * 0.4, def.r * 1.5, def.r * 0.4), bodyMat);
-    arm.position.set(-def.r * 1.0, def.r * 1.8, 0);
-    g.add(arm);
-    // Mechanical legs
-    for (const s of [-1, 1]) {
-        const leg = new THREE.Mesh(new THREE.CylinderGeometry(def.r * 0.18, def.r * 0.28, def.r * 1.4, 8), mkStd(0x2a2a2a, 0x100408));
-        leg.position.set(s * def.r * 0.4, def.r * 0.7, 0);
-        leg.castShadow = true; g.add(leg);
-        g.userData.legs = g.userData.legs || [];
-        g.userData.legs.push(leg);
-    }
-    g.userData.height = def.r * 3.8;
-    g.userData.eyeMat = eyeMat;
-    return g;
-}
-
-function buildSpider(def) {
-    const g = new THREE.Group();
-    const bodyMat = mkStd(def.col, 0x200408);
-    // Big round abdomen
-    const body = new THREE.Mesh(new THREE.SphereGeometry(def.r * 1.3, 10, 8), bodyMat);
-    body.position.y = def.r * 1.5;
-    body.scale.set(1.2, 0.8, 1.2);
-    body.castShadow = true; g.add(body);
-    // Brain head on top
-    const brain = new THREE.Mesh(new THREE.SphereGeometry(def.r * 0.8, 10, 8),
-        new THREE.MeshStandardMaterial({ color: 0xaa6060, emissive: 0x400010, emissiveIntensity: 0.8, roughness: 0.3 }));
-    brain.position.y = def.r * 2.4;
-    g.add(brain);
-    // Eyes (multiple)
-    const eyeMat = mkEye(def.eye);
-    for (let i = 0; i < 4; i++) {
-        const a = -0.6 + i * 0.4;
-        const e = new THREE.Mesh(new THREE.SphereGeometry(def.r * 0.12, 6, 5), eyeMat);
-        e.position.set(Math.cos(a) * def.r * 0.8, def.r * 2.2, Math.sin(a) * def.r * 0.8 + def.r * 0.3);
-        g.add(e);
-    }
-    // Spider legs
-    const legMat = mkStd(0x201810);
-    for (let i = 0; i < 8; i++) {
-        const a = (i / 8) * Math.PI * 2;
-        const leg = new THREE.Mesh(new THREE.BoxGeometry(def.r * 0.1, def.r * 1.4, def.r * 0.1), legMat);
-        leg.position.set(Math.cos(a) * def.r * 1.3, def.r * 0.8, Math.sin(a) * def.r * 1.3);
-        leg.rotation.z = -Math.cos(a) * 0.5;
-        leg.rotation.x = Math.sin(a) * 0.5;
-        g.add(leg);
-    }
-    g.userData.height = def.r * 3.0;
-    g.userData.eyeMat = eyeMat;
-    return g;
-}
-
-const BUILDERS = {
-    imp: buildImp,
-    skull: buildSkull,
-    demon: buildDemon,
-    caco: buildCaco,
-    baron: buildBaron,
-    revenant: buildRevenant,
-    cyber: buildCyber,
-    spider: buildSpider,
+const TEMPLATES = {
+    imp() {
+        return {
+            height: 2.75,
+            body: [
+                P(cyl(0.56, 0.36, 1.1, 6), 0, 1.55, 0, 0.16),
+                P(box(0.62, 0.36, 0.42), 0, 0.96, 0),
+                P(ball(0.43, 1), 0, 2.27, 0.14, 0, 0, 0, 1, 0.9, 1.08),
+                P(box(0.4, 0.15, 0.38), 0, 1.98, 0.3, 0.2),
+                ...both(s => P(ball(0.25, 0), s * 0.63, 1.96, 0)),
+            ],
+            trim: [
+                ...both(s => P(cone(0.1, 0.6), s * 0.27, 2.7, -0.04, -0.35, 0, -s * 0.4)),
+                ...both(s => P(cone(0.08, 0.38), s * 0.76, 2.18, 0, 0, 0, -s * 0.7)),
+                P(cone(0.09, 0.42), 0, 2.0, -0.42, -1.25), P(cone(0.09, 0.42), 0, 1.65, -0.46, -1.35), P(cone(0.08, 0.36), 0, 1.3, -0.42, -1.45),
+            ],
+            glow: [...both(s => P(ball(0.085, 0), s * 0.17, 2.31, 0.5)), P(box(0.26, 0.045, 0.05), 0, 2.02, 0.5)],
+            arms: both(s => limb([
+                P(cyl(0.13, 0.1, 0.95, 5), 0, -0.47, 0), P(ball(0.15, 0), 0, -0.98, 0),
+                P(cone(0.04, 0.26, 4), -0.07, -1.16, 0.05, Math.PI), P(cone(0.04, 0.26, 4), 0.07, -1.16, 0.05, Math.PI), P(cone(0.04, 0.26, 4), 0, -1.17, -0.06, Math.PI),
+            ], s * 0.66, 1.92, 0)),
+            legs: both(s => limb([
+                P(cyl(0.18, 0.13, 0.52, 5), 0, -0.24, 0.05, -0.3), P(cyl(0.12, 0.09, 0.5, 5), 0, -0.66, 0.02, 0.35), P(box(0.2, 0.1, 0.38), 0, -0.9, 0.1),
+            ], s * 0.24, 0.95, 0)),
+        };
+    },
+    skull() { // lost soul: centred on its origin, trailing flames
+        return {
+            height: 1.6,
+            bone: [
+                P(ball(0.82, 1), 0, 0.12, 0, 0, 0, 0, 1, 0.95, 1.05),
+                P(box(0.8, 0.34, 0.7), 0, -0.6, 0.22),
+                P(box(0.5, 0.2, 0.2), 0, -0.3, 0.78),
+            ],
+            trim: [
+                ...both(s => P(cone(0.16, 0.8), s * 0.62, 0.66, 0.1, 0.5, 0, -s * 0.75)),
+                ...both(s => P(ball(0.26, 0), s * 0.33, 0.12, 0.72)),
+                P(cone(0.1, 0.22, 3), 0, -0.14, 0.86, Math.PI),
+                P(box(0.56, 0.08, 0.06), 0, -0.5, 0.6),
+            ],
+            glow: [
+                ...both(s => P(ball(0.13, 0), s * 0.33, 0.12, 0.84)),
+                P(cone(0.6, 1.5, 6), 0, 0.2, -1.0, -Math.PI / 2), P(cone(0.3, 0.9, 5), 0.4, 0.5, -0.8, -Math.PI / 2 + 0.3), P(cone(0.3, 0.9, 5), -0.4, 0.5, -0.8, -Math.PI / 2 + 0.3),
+            ],
+        };
+    },
+    demon() { // pinky: all jaw and shoulders
+        return {
+            height: 2.6,
+            body: [
+                P(ball(1.0, 1), 0, 1.45, -0.15, 0, 0, 0, 1.05, 0.82, 1.15),
+                P(ball(0.7, 1), 0, 1.95, 0.62, 0, 0, 0, 1.05, 0.8, 1.0),
+                P(box(0.95, 0.3, 0.8), 0, 1.36, 0.82, 0.12),
+                ...both(s => P(ball(0.42, 0), s * 0.92, 1.75, 0.1)),
+                P(cone(0.3, 0.9, 5), 0, 1.4, -1.3, -1.9),
+            ],
+            trim: [
+                ...both(s => P(cone(0.13, 0.5), s * 0.5, 2.5, 0.5, 0.5, 0, -s * 0.5)),
+                P(cone(0.12, 0.4), 0, 2.4, -0.1, -0.4), P(cone(0.12, 0.4), 0, 2.2, -0.6, -0.8), P(cone(0.11, 0.36), 0, 1.9, -1.0, -1.1),
+            ],
+            bone: [
+                ...[-0.36, -0.18, 0, 0.18, 0.36].map(x => P(cone(0.075, 0.26, 4), x, 1.6, 1.16, 0.15)),
+                ...[-0.3, -0.1, 0.1, 0.3].map(x => P(cone(0.07, 0.22, 4), x, 1.78, 1.22, Math.PI - 0.1)),
+            ],
+            glow: [...both(s => P(ball(0.11, 0), s * 0.36, 2.2, 1.12)), P(box(0.66, 0.12, 0.1), 0, 1.7, 1.08)],
+            arms: both(s => limb([P(cyl(0.2, 0.15, 0.7, 5), 0, -0.35, 0.1, -0.4), P(ball(0.2, 0), 0, -0.72, 0.26)], s * 0.98, 1.6, 0.25)),
+            legs: both(s => limb([
+                P(cyl(0.34, 0.24, 0.6, 6), 0, -0.3, 0), P(cyl(0.22, 0.18, 0.4, 6), 0, -0.72, 0.05), P(box(0.42, 0.14, 0.56), 0, -0.92, 0.12),
+            ], s * 0.5, 1.0, -0.1)),
+        };
+    },
+    caco() { // floating ball of hate, centred on its origin
+        const horns = [];
+        for (let i = 0; i < 9; i++) {
+            const a = (i / 9) * 6.283 + 0.35;
+            horns.push(P(cone(0.16, 0.6), Math.cos(a) * 1.1, 0.72, Math.sin(a) * 1.1, Math.sin(a) * 0.9, 0, -Math.cos(a) * 0.9));
+        }
+        return {
+            height: 1.3,
+            body: [P(ball(1.0, 2), 0, 0, 0, 0, 0, 0, 1.3, 1.02, 1.3), P(box(1.1, 0.16, 0.3), 0, 0.42, 1.12, -0.25)],
+            trim: [...horns, P(cone(0.2, 0.7), 0, 1.25, 0, 0), P(ball(0.16, 0), 0, 0.02, 1.52), P(box(1.0, 0.3, 0.3), 0, -0.52, 1.08, 0.3)],
+            bone: [
+                ...[-0.36, -0.12, 0.12, 0.36].map(x => P(cone(0.075, 0.24, 4), x, -0.4, 1.2, Math.PI + 0.3)),
+                ...[-0.28, 0, 0.28].map(x => P(cone(0.07, 0.2, 4), x, -0.66, 1.14, 0.3)),
+            ],
+            glow: [P(ball(0.27, 1), 0, 0.02, 1.26), P(box(0.8, 0.08, 0.1), 0, -0.52, 1.2, 0.3)],
+        };
+    },
+    baron() {
+        return {
+            height: 3.6,
+            body: [
+                P(cyl(0.8, 0.5, 1.3, 6), 0, 2.05, 0, 0.1),
+                P(box(0.9, 0.36, 0.5), 0, 2.45, 0.34, -0.2),
+                P(box(0.74, 0.4, 0.5), 0, 1.3, 0),
+                P(ball(0.46, 1), 0, 3.02, 0.16, 0, 0, 0, 0.95, 1.05, 1.1),
+                P(box(0.4, 0.34, 0.5), 0, 2.86, 0.5, 0.3),
+                ...both(s => P(ball(0.38, 0), s * 0.92, 2.6, 0)),
+            ],
+            trim: [
+                ...both(s => P(cone(0.16, 0.7, 6), s * 0.46, 3.36, 0.0, 0, 0, -s * 1.05)),
+                ...both(s => P(cone(0.1, 0.55, 6), s * 0.92, 3.7, 0.0, 0, 0, -s * 0.15)),
+                ...both(s => P(cone(0.09, 0.3), s * 1.0, 2.95, 0, 0, 0, -s * 0.5)),
+                P(cone(0.1, 0.3), 0, 2.62, 0.72, Math.PI * 0.9),
+            ],
+            glow: [...both(s => P(ball(0.085, 0), s * 0.2, 3.1, 0.6))],
+            arms: both(s => limb([
+                P(cyl(0.24, 0.18, 0.8, 6), 0, -0.4, 0), P(cyl(0.18, 0.22, 0.7, 6), 0, -1.1, 0.08, -0.25), P(ball(0.3, 0), 0, -1.55, 0.2),
+            ], s * 0.96, 2.55, 0)),
+            armGlow: both(s => limb([P(ball(0.2, 0), 0, -1.62, 0.34)], s * 0.96, 2.55, 0)),
+            legs: both(s => limb([
+                P(cyl(0.3, 0.2, 0.62, 6), 0, -0.28, 0.1, -0.45), P(cyl(0.16, 0.11, 0.62, 6), 0, -0.8, 0.0, 0.5), P(cyl(0.12, 0.2, 0.22, 6), 0, -1.14, 0.12),
+            ], s * 0.3, 1.25, 0)),
+            legTrim: true,
+        };
+    },
+    revenant() {
+        const ribs = [];
+        for (let i = 0; i < 4; i++) ribs.push(P(box(0.82 - i * 0.08, 0.08, 0.5 - i * 0.04), 0, 2.36 - i * 0.2, 0.02));
+        return {
+            height: 3.4,
+            bone: [
+                ...ribs, P(cyl(0.09, 0.09, 1.3, 5), 0, 1.95, -0.1),
+                P(box(0.5, 0.22, 0.3), 0, 1.3, 0),
+                P(ball(0.36, 1), 0, 2.98, 0.06, 0, 0, 0, 0.92, 1.05, 1.05),
+                P(box(0.34, 0.2, 0.3), 0, 2.68, 0.14),
+            ],
+            trim: [
+                ...both(s => P(box(0.36, 0.34, 0.8), s * 0.62, 2.78, -0.08, -0.15)),
+                ...both(s => P(ball(0.11, 0), s * 0.14, 3.02, 0.36)),
+                P(box(0.2, 0.05, 0.05), 0, 2.74, 0.32),
+            ],
+            glow: [
+                ...both(s => P(ball(0.06, 0), s * 0.14, 3.02, 0.42)),
+                ...both(s => P(cyl(0.1, 0.1, 0.06, 6), s * 0.62, 2.84, 0.34, Math.PI / 2)),
+                P(ball(0.14, 0), 0, 2.2, 0.1),
+            ],
+            armsBone: true,
+            arms: both(s => limb([P(cyl(0.07, 0.06, 0.8, 5), 0, -0.4, 0), P(cyl(0.06, 0.05, 0.75, 5), 0, -1.15, 0.08, -0.2), P(box(0.14, 0.2, 0.1), 0, -1.6, 0.14)], s * 0.5, 2.5, 0)),
+            legs: both(s => limb([P(cyl(0.09, 0.07, 0.62, 5), 0, -0.3, 0), P(cyl(0.07, 0.06, 0.6, 5), 0, -0.9, 0), P(box(0.16, 0.08, 0.34), 0, -1.22, 0.08)], s * 0.2, 1.26, 0)),
+        };
+    },
+    cyber() { // boss chassis: bull head, cannon arm, one piston leg
+        return {
+            height: 3.9,
+            body: [
+                P(cyl(0.95, 0.62, 1.4, 6), 0, 2.3, 0, 0.08),
+                P(box(1.1, 0.4, 0.6), 0, 2.72, 0.36, -0.2),
+                P(box(0.86, 0.45, 0.6), 0, 1.45, 0),
+                P(ball(0.5, 1), 0, 3.3, 0.2, 0, 0, 0, 1, 0.95, 1.15),
+                P(box(0.46, 0.36, 0.5), 0, 3.12, 0.62, 0.25),
+                P(ball(0.44, 0), -1.08, 2.85, 0),
+            ],
+            trim: [
+                ...both(s => P(cone(0.17, 0.8, 6), s * 0.5, 3.7, 0.1, 0.2, 0, -s * 0.9)),
+                P(ball(0.5, 0), 1.08, 2.85, 0), P(cyl(0.34, 0.3, 1.5, 8), 1.12, 2.3, 0.55, Math.PI / 2), P(cyl(0.4, 0.4, 0.2, 8), 1.12, 2.3, 1.3, Math.PI / 2),
+                P(box(0.9, 0.5, 0.12), 0, 2.3, 0.72, 0.08), P(box(0.5, 0.3, 0.5), 0, 2.2, -0.75),
+                ...both(s => P(cone(0.1, 0.4), s * 0.36, 2.9, -0.6, -1.0)),
+            ],
+            glow: [
+                P(ball(0.1, 0), -0.22, 3.4, 0.72), P(ball(0.1, 0), 0.22, 3.4, 0.72),
+                P(cyl(0.24, 0.24, 0.06, 8), 1.12, 2.3, 1.42, Math.PI / 2),
+                P(box(0.5, 0.1, 0.05), 0, 2.3, 0.8, 0.08), P(box(0.3, 0.1, 0.05), 0, 2.2, -1.01),
+            ],
+            arms: [limb([P(cyl(0.26, 0.2, 0.9, 6), 0, -0.45, 0), P(cyl(0.2, 0.24, 0.8, 6), 0, -1.2, 0.1, -0.25), P(ball(0.32, 0), 0, -1.7, 0.22)], -1.1, 2.8, 0)],
+            legs: [
+                limb([P(cyl(0.36, 0.26, 0.7, 6), 0, -0.32, 0), P(cyl(0.2, 0.16, 0.7, 6), 0, -0.95, 0), P(box(0.5, 0.16, 0.7), 0, -1.34, 0.12)], -0.42, 1.42, 0),
+                limb([P(cyl(0.3, 0.3, 0.5, 8), 0, -0.25, 0), P(cyl(0.12, 0.12, 0.8, 6), 0, -0.85, 0), P(cyl(0.2, 0.34, 0.3, 8), 0, -1.28, 0)], 0.42, 1.42, 0),
+            ],
+        };
+    },
+    spider() { // boss chassis: exposed brain on a walker
+        const legs = [];
+        for (let i = 0; i < 6; i++) {
+            const a = (i / 6) * 6.283 + 0.52, cx = Math.cos(a), sz = Math.sin(a);
+            legs.push(P(cyl(0.1, 0.1, 1.5, 5), cx * 1.55, 1.75, sz * 1.55, sz * 0.9, 0, -cx * 0.9));
+            legs.push(P(cyl(0.09, 0.05, 1.9, 5), cx * 2.3, 0.95, sz * 2.3, -sz * 0.25, 0, cx * 0.25));
+            legs.push(P(ball(0.16, 0), cx * 2.08, 1.95, sz * 2.08));
+        }
+        return {
+            height: 3.2,
+            body: [P(ball(1.05, 2), 0, 2.2, -0.1, 0, 0, 0, 1.15, 0.85, 1.25), P(box(0.9, 0.5, 0.5), 0, 1.75, 0.95, 0.2)],
+            trim: [
+                P(cyl(1.25, 1.0, 0.5, 8), 0, 1.45, 0), ...legs,
+                P(cyl(0.16, 0.16, 1.2, 6), 0, 1.3, 1.1, Math.PI / 2), P(cyl(0.22, 0.22, 0.3, 6), 0, 1.3, 0.7, Math.PI / 2),
+            ],
+            bone: [...[-0.3, -0.1, 0.1, 0.3].map(x => P(cone(0.06, 0.2, 4), x, 1.56, 1.24, Math.PI))],
+            glow: [
+                ...both(s => P(ball(0.13, 0), s * 0.3, 1.95, 1.22)), ...both(s => P(ball(0.07, 0), s * 0.52, 2.08, 1.08)),
+                P(cyl(0.1, 0.1, 0.05, 6), 0, 1.3, 1.72, Math.PI / 2),
+                P(box(0.06, 0.06, 1.6), 0, 3.02, -0.1), P(box(1.4, 0.06, 0.06), 0, 2.98, -0.1),
+            ],
+        };
+    },
 };
 
-export function buildEnemyMesh(def, isBoss = false) {
-    const key = def.build || 'imp';
-    const builder = BUILDERS[key] || buildImp;
-    const g = builder(def);
-    if (isBoss) {
-        g.scale.multiplyScalar(1.1);
-        // Boss aura light
-        const aura = new THREE.PointLight(def.eye, 1.4, 12, 1.5);
-        aura.position.y = def.r * 2;
-        g.add(aura);
-        g.userData.aura = aura;
+const _templates = new Map();
+function template(key) {
+    if (!_templates.has(key)) {
+        const t = (TEMPLATES[key] || TEMPLATES.imp)();
+        for (const k of ['body', 'trim', 'bone', 'glow']) t[k] = t[k] && t[k].length ? merge(t[k]) : null;
+        _templates.set(key, t);
     }
+    return _templates.get(key);
+}
+
+export function buildEnemyMesh(def, isBoss = false) {
+    const t = template(def.build);
+    const col = new THREE.Color(def.col);
+    const mats = {
+        body: new THREE.MeshStandardMaterial({ color: col, emissive: col, emissiveIntensity: isBoss ? 0.3 : 0.14, roughness: 0.72, metalness: 0.05, flatShading: true }),
+        trim: new THREE.MeshStandardMaterial({ color: 0x1c1618, emissive: 0x000000, emissiveIntensity: 1, roughness: 0.5, metalness: 0.5, flatShading: true }),
+        bone: new THREE.MeshStandardMaterial({ color: 0xd8ceb4, emissive: 0x30281c, emissiveIntensity: 0.3, roughness: 0.8, metalness: 0, flatShading: true }),
+        glow: new THREE.MeshStandardMaterial({ color: 0x000000, emissive: def.eye, emissiveIntensity: 2.2, roughness: 1, flatShading: true }),
+    };
+    const g = new THREE.Group();
+    const add = (geo, mat, at) => {
+        const m = new THREE.Mesh(geo, mat);
+        m.castShadow = true;
+        if (at) m.position.set(at.x, at.y, at.z);
+        g.add(m);
+        return m;
+    };
+    for (const k of ['body', 'trim', 'bone', 'glow']) if (t[k]) add(t[k], mats[k]);
+    const limbMat = t.armsBone ? mats.bone : mats.body;
+    g.userData.legs = (t.legs || []).map(l => add(l.geo, t.legTrim ? mats.trim : limbMat, l));
+    g.userData.arms = (t.arms || []).map(l => add(l.geo, limbMat, l));
+    if (t.armGlow) t.armGlow.forEach((l, i) => g.userData.arms[i].add(new THREE.Mesh(l.geo, mats.glow)));
+    g.userData.height = t.height * def.r;
+    g.userData.eyeMat = mats.glow;
+    g.userData.mats = Object.values(mats);
+    g.userData.flash = g.userData.mats.map(m => ({ m, hex: m.emissive.getHex(), i: m.emissiveIntensity }));
+    g.scale.setScalar(def.r * (isBoss ? 1.15 : 1));
     return g;
+}
+
+// Geometry is shared between all enemies of a build; only the per-enemy materials are released.
+export function disposeEnemyMesh(g) {
+    for (const m of g.userData.mats) m.dispose();
 }

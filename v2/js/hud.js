@@ -1,197 +1,143 @@
 import { WEAP, WC } from './weapons.js';
 
-// HUD: DOM-side updates. Animated numbers on HP/score/kills, DOOM face canvas, weapon slots.
-
+// DOM HUD: eased numbers, weapon strip, DOOM face, boss bar, hit marker.
 export class HUD {
     constructor() {
-        this.$hud = document.getElementById('hud');
-        this.$bottom = document.getElementById('bottom-hud');
-        this.$hWave = document.getElementById('h-wave');
-        this.$hScore = document.getElementById('h-score');
-        this.$hKills = document.getElementById('h-kills');
-        this.$hHi = document.getElementById('h-hi');
-        this.$hTime = document.getElementById('h-time');
-        this.$hBiome = document.getElementById('h-biome');
-
-        this.$hvAmmo = document.getElementById('hv-ammo');
-        this.$hvHp = document.getElementById('hv-hp');
-        this.$hvWave = document.getElementById('hv-wave');
-        this.$hpBar = document.getElementById('hp-bar');
-        this.$wepName = document.getElementById('wep-name');
-        this.$wepSlots = document.getElementById('weap-slots');
-        this.$faceCanvas = document.getElementById('face-canvas');
-        this.faceCtx = this.$faceCanvas.getContext('2d');
-        this.$crosshair = document.getElementById('crosshair');
-
-        this.anim = { score: 0, kills: 0, hp: 100, ammo: 0 };
-
-        this.buildWeaponSlots();
-    }
-
-    buildWeaponSlots() {
-        this.$wepSlots.innerHTML = '';
+        const $ = id => document.getElementById(id);
+        this.$ = {
+            hud: $('hud'), bottom: $('bottom-hud'), cross: $('crosshair'),
+            wave: $('h-wave'), score: $('h-score'), kills: $('h-kills'), hi: $('h-hi'), time: $('h-time'), biome: $('h-biome'),
+            ammo: $('hv-ammo'), hp: $('hv-hp'), armor: $('hv-armor'), hvWave: $('hv-wave'), hpBar: $('hp-bar'),
+            wepName: $('wep-name'), slots: $('weap-slots'), combo: $('combo'),
+            boss: $('boss-bar'), bossName: $('boss-name'), bossFill: $('boss-fill'), left: $('h-left'),
+        };
+        this.faceCtx = $('face-canvas').getContext('2d');
+        this.anim = { score: 0, hp: 100 };
+        this.last = {};
+        this.faceKey = ''; this.faceT = 0; this.hitT = 0;
+        this.slots = [];
         for (let i = 1; i <= WC; i++) {
             const d = document.createElement('div');
-            d.className = 'wep-slot';
-            d.id = 'wep-slot-' + i;
-            d.textContent = String(i);
-            this.$wepSlots.appendChild(d);
+            d.className = 'wep-slot'; d.textContent = i;
+            this.$.slots.appendChild(d);
+            this.slots.push(d);
         }
     }
 
-    show() {
-        this.$hud.style.display = 'block';
-        this.$bottom.classList.remove('hidden');
-        this.$crosshair.style.display = 'block';
-    }
-    hide() {
-        this.$hud.style.display = 'none';
-        this.$bottom.classList.add('hidden');
-        this.$crosshair.style.display = 'none';
+    show(on) {
+        this.$.hud.style.display = on ? 'block' : 'none';
+        this.$.bottom.classList.toggle('hidden', !on);
+        this.$.cross.style.display = on ? 'block' : 'none';
+        if (!on) this.setBoss(null);
     }
 
-    setBiome(name) {
-        this.$hBiome.textContent = name;
+    _set(key, el, val) { if (this.last[key] !== val) { this.last[key] = val; el.textContent = val; } }
+
+    setBiome(name, accent) { this.$.biome.textContent = name; this.$.biome.style.color = accent; }
+
+    setBoss(name, pct = 1) {
+        if (!name) { this.$.boss.classList.remove('on'); return; }
+        this.$.boss.classList.add('on');
+        this._set('bossName', this.$.bossName, name);
+        this.$.bossFill.style.width = Math.max(0, pct * 100) + '%';
     }
 
-    update(dt, { pl, wave, score, kills, hi, time }) {
-        // Animated numbers (ease)
-        this.anim.score += (score - this.anim.score) * Math.min(1, dt * 8);
-        this.anim.kills += (kills - this.anim.kills) * Math.min(1, dt * 10);
-        this.anim.hp += (pl.hp - this.anim.hp) * Math.min(1, dt * 12);
+    hitMarker(kill) {
+        this.hitT = kill ? 0.22 : 0.1;
+        document.body.classList.add('crosshair-hit');
+        document.body.classList.toggle('crosshair-kill', !!kill);
+    }
+
+    setCombo(text) {
+        if (text) this._set('combo', this.$.combo, text);
+        this.$.combo.classList.toggle('on', !!text);
+    }
+
+    update(dt, { pl, wave, score, kills, hi, time, left }) {
+        const a = this.anim, $ = this.$;
+        a.score += (score - a.score) * Math.min(1, dt * 8);
+        if (Math.abs(score - a.score) < 1) a.score = score;
+        a.hp += (pl.hp - a.hp) * Math.min(1, dt * 12);
+
+        this._set('wave', $.wave, wave);
+        this._set('hvWave', $.hvWave, wave);
+        this._set('score', $.score, Math.round(a.score));
+        this._set('kills', $.kills, kills);
+        this._set('hi', $.hi, Math.max(hi, score));
+        this._set('left', $.left, left);
+        const s = Math.floor(time % 60);
+        this._set('time', $.time, Math.floor(time / 60) + ':' + (s < 10 ? '0' : '') + s);
+        this._set('hp', $.hp, Math.max(0, Math.ceil(a.hp - 0.01)));
+        this._set('armor', $.armor, pl.armor > 0 ? '◆ ' + Math.ceil(pl.armor) : '');
 
         const def = WEAP[pl.wep];
-        const ammo = def.maxAmmo === Infinity ? Infinity : (pl.ammo[pl.wep] ?? 0);
-        this.anim.ammo += ((ammo === Infinity ? 999 : ammo) - this.anim.ammo) * Math.min(1, dt * 10);
+        this._set('ammo', $.ammo, pl.reloading ? '···' : def.maxAmmo === Infinity ? '∞' : pl.ammo[pl.wep]);
+        this._set('wepName', $.wepName, pl.reloading ? 'RELOADING' : def.name);
 
-        this.$hWave.textContent = wave;
-        this.$hScore.textContent = Math.floor(this.anim.score);
-        this.$hKills.textContent = Math.floor(this.anim.kills);
-        this.$hHi.textContent = hi;
-        const m = Math.floor(time / 60), s = Math.floor(time % 60);
-        this.$hTime.textContent = m + ':' + (s < 10 ? '0' : '') + s;
-
-        this.$hvHp.textContent = Math.max(0, Math.floor(this.anim.hp));
-        this.$hvWave.textContent = wave;
-        if (pl.reloading) this.$hvAmmo.textContent = '...';
-        else this.$hvAmmo.textContent = ammo === Infinity ? '∞' : Math.floor(this.anim.ammo);
-        const pct = Math.max(0, Math.min(100, (pl.hp / pl.maxHp) * 100));
-        this.$hpBar.style.width = pct + '%';
-        // HP color shifts
-        const hue = pct / 100 * 120; // red->green
-        this.$hpBar.style.background = `linear-gradient(90deg, hsl(0,80%,50%), hsl(${hue},80%,50%))`;
-
-        this.$wepName.textContent = def.name;
-        for (let i = 1; i <= WC; i++) {
-            const slot = document.getElementById('wep-slot-' + i);
-            slot.classList.toggle('has', !!pl.unlocked[i]);
-            slot.classList.toggle('active', pl.wep === i);
+        const pct = Math.max(0, Math.min(1, pl.hp / pl.maxHp));
+        const pk = Math.round(pct * 100);
+        if (this.last.pct !== pk) {
+            this.last.pct = pk;
+            $.hpBar.style.width = pk + '%';
+            $.hpBar.style.background = `hsl(${pct * 120}, 85%, 48%)`;
+            $.hp.classList.toggle('low', pct < 0.3);
+        }
+        const sk = pl.wep + ':' + Object.keys(pl.unlocked).join('');
+        if (this.last.slots !== sk) {
+            this.last.slots = sk;
+            this.slots.forEach((el, i) => {
+                el.classList.toggle('has', !!pl.unlocked[i + 1]);
+                el.classList.toggle('active', pl.wep === i + 1);
+            });
         }
 
-        this.drawFace(pl);
+        if (this.hitT > 0) {
+            this.hitT -= dt;
+            if (this.hitT <= 0) document.body.classList.remove('crosshair-hit', 'crosshair-kill');
+        }
+
+        // Face: redraw on state change, or every ~0.6s so the eyes glance around
+        this.faceT -= dt;
+        const key = (pl.hurtT > 0 ? 'h' : '') + Math.floor(pct * 5);
+        if (key !== this.faceKey || this.faceT <= 0) {
+            this.faceKey = key; this.faceT = 0.6;
+            this.drawFace(pct, pl.hurtT > 0);
+        }
     }
 
-    // ===== DOOM FACE =====
-    drawFace(pl) {
-        const c = this.faceCtx, W = 64, H = 64;
-        const hpRatio = pl.hp / pl.maxHp;
-        const isHurt = pl.hurtT > 0;
-
-        c.clearRect(0, 0, W, H);
-
-        // Background panel
-        const grad = c.createLinearGradient(0, 0, 0, H);
-        grad.addColorStop(0, hpRatio > 0.6 ? '#2a1a18' : '#2a0a08');
-        grad.addColorStop(1, '#0a0202');
-        c.fillStyle = grad;
-        c.fillRect(0, 0, W, H);
-
-        // Skin color
-        const skin = isHurt ? '#ff5050' :
-            hpRatio > 0.7 ? '#d4a574' :
-            hpRatio > 0.4 ? '#c88060' :
-            hpRatio > 0.2 ? '#a06040' : '#703020';
-
-        // Face shape (slightly tilted at low HP)
-        c.save();
-        if (hpRatio < 0.3) c.translate(1, 1);
-        c.fillStyle = skin;
-        c.fillRect(14, 10, 36, 40);
-        // Hair
-        c.fillStyle = '#5a3820';
-        c.fillRect(14, 8, 36, 10);
-        // Shadows
-        c.fillStyle = 'rgba(0,0,0,0.3)';
-        c.fillRect(14, 10, 2, 40);
-        c.fillRect(48, 10, 2, 40);
-
-        // Eyes
-        if (hpRatio > 0.35) {
-            c.fillStyle = '#fff';
-            c.fillRect(18, 22, 10, 7);
-            c.fillRect(36, 22, 10, 7);
-            const px = isHurt ? 0 : Math.floor(Math.random() * 3) - 1;
-            c.fillStyle = '#222';
-            c.fillRect(21 + px, 24, 4, 4);
-            c.fillRect(39 + px, 24, 4, 4);
-        } else {
-            // squinting
-            c.fillStyle = '#fff';
-            c.fillRect(18, 24, 10, 3);
-            c.fillRect(36, 24, 10, 3);
-            c.fillStyle = '#222';
-            c.fillRect(22, 25, 2, 2);
-            c.fillRect(40, 25, 2, 2);
-        }
-
-        // Mouth
-        if (isHurt) {
-            c.fillStyle = '#500';
-            c.fillRect(20, 38, 24, 7);
-            c.fillStyle = '#fff';
-            c.fillRect(22, 39, 3, 3);
-            c.fillRect(29, 39, 3, 3);
-            c.fillRect(36, 39, 3, 3);
-        } else if (hpRatio > 0.6) {
-            c.fillStyle = '#700';
-            c.fillRect(24, 38, 16, 4);
-        } else if (hpRatio > 0.3) {
-            c.fillStyle = '#700';
-            c.fillRect(22, 40, 20, 4);
-            c.fillStyle = '#500';
-            c.fillRect(24, 36, 16, 2);
-        } else {
-            c.fillStyle = '#900';
-            c.fillRect(20, 36, 24, 8);
-            c.fillStyle = '#ff0000';
-            c.fillRect(14, 18, 5, 12);
-            c.fillRect(46, 24, 5, 10);
-            c.fillStyle = '#fff';
-            c.fillRect(24, 38, 3, 3);
-            c.fillRect(36, 38, 3, 3);
-        }
-
-        // Blood splatters
-        if (hpRatio < 0.5) {
-            c.fillStyle = '#880000';
-            c.fillRect(13 + Math.floor(Math.random() * 6), 14, 4, 4);
-            if (hpRatio < 0.25) {
-                c.fillRect(44 + Math.floor(Math.random() * 6), 20, 5, 4);
-                c.fillRect(18, 44, 8, 3);
-            }
-        }
-
-        c.restore();
-    }
-
-    // Combo flash
-    setCombo(text) {
-        const $c = document.getElementById('combo');
-        if (text) {
-            $c.textContent = text;
-            $c.classList.add('on');
-        } else {
-            $c.classList.remove('on');
-        }
+    drawFace(hp, hurt) {
+        const c = this.faceCtx, W = 64;
+        const g = c.createLinearGradient(0, 0, 0, W);
+        g.addColorStop(0, hp > 0.6 ? '#2a1a18' : '#3a0a08'); g.addColorStop(1, '#0a0202');
+        c.fillStyle = g; c.fillRect(0, 0, W, W);
+        const skin = hurt ? '#ff6a5a' : hp > 0.7 ? '#d4a574' : hp > 0.4 ? '#c88a64' : hp > 0.2 ? '#a86848' : '#84503a';
+        c.fillStyle = skin; c.fillRect(14, 10, 36, 42);
+        c.fillStyle = '#4a2c18'; c.fillRect(14, 6, 36, 10); c.fillRect(12, 10, 4, 12); c.fillRect(48, 10, 4, 12);
+        c.fillStyle = 'rgba(0,0,0,0.22)'; c.fillRect(14, 16, 3, 36); c.fillRect(47, 16, 3, 36); c.fillRect(14, 48, 36, 4);
+        // brows
+        c.fillStyle = '#2a1608';
+        if (hurt || hp < 0.4) { c.fillRect(18, 19, 10, 3); c.fillRect(36, 19, 10, 3); c.fillRect(26, 21, 3, 2); c.fillRect(35, 21, 3, 2); }
+        else { c.fillRect(18, 20, 10, 2); c.fillRect(36, 20, 10, 2); }
+        // eyes
+        const px = hurt ? 0 : Math.floor(Math.random() * 3) - 1;
+        c.fillStyle = '#fff';
+        if (hurt) { c.fillRect(18, 25, 10, 3); c.fillRect(36, 25, 10, 3); }
+        else { c.fillRect(18, 23, 10, 7); c.fillRect(36, 23, 10, 7); }
+        c.fillStyle = '#1a1a1a'; c.fillRect(21 + px * 2, 25, 4, hurt ? 3 : 4); c.fillRect(39 + px * 2, 25, 4, hurt ? 3 : 4);
+        // nose
+        c.fillStyle = 'rgba(0,0,0,0.25)'; c.fillRect(30, 30, 4, 7);
+        // mouth
+        if (hurt) {
+            c.fillStyle = '#400'; c.fillRect(21, 40, 22, 8);
+            c.fillStyle = '#fff'; for (let i = 0; i < 5; i++) c.fillRect(23 + i * 4, 40, 3, 3);
+        } else if (hp > 0.6) { c.fillStyle = '#6a1a10'; c.fillRect(24, 41, 16, 3); c.fillRect(22, 40, 2, 2); c.fillRect(40, 40, 2, 2); }
+        else if (hp > 0.3) { c.fillStyle = '#6a1a10'; c.fillRect(23, 42, 18, 3); }
+        else { c.fillStyle = '#700'; c.fillRect(21, 40, 22, 6); c.fillStyle = '#fff'; c.fillRect(24, 40, 3, 3); c.fillRect(37, 40, 3, 3); }
+        // blood
+        c.fillStyle = '#b00000';
+        if (hp < 0.8) c.fillRect(44, 12, 4, 9);
+        if (hp < 0.6) { c.fillRect(16, 30, 4, 10); c.fillRect(31, 37, 2, 6); }
+        if (hp < 0.4) { c.fillRect(22, 10, 5, 12); c.fillRect(40, 30, 6, 4); c.fillRect(24, 46, 3, 6); }
+        if (hp < 0.2) { c.fillRect(14, 14, 8, 5); c.fillRect(34, 12, 4, 10); c.fillRect(38, 44, 4, 8); c.fillRect(18, 40, 3, 8); }
     }
 }

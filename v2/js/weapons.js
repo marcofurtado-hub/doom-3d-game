@@ -1,325 +1,258 @@
 import * as THREE from 'three';
+import { P, box, cone, cyl, ball, merge, both } from './geo.js';
 
 // Weapon definitions + first-person weapon meshes + firing mechanics.
 
 export const WEAP = {
-    1: { name: 'PISTOL', rate: 0.17, dmg: 22, spd: 32, spread: 0.025, count: 1, sz: 0.1, color: 0xe8c020, sfx: 'shoot', maxAmmo: Infinity, ric: 3, recoil: 0.04, shake: 0.08, light: true },
-    2: { name: 'SHOTGUN', rate: 0.5, dmg: 15, spd: 28, spread: 0.18, count: 8, sz: 0.09, color: 0xd06020, sfx: 'shotgun', maxAmmo: 28, rTime: 0.9, ric: 1, recoil: 0.14, shake: 0.35, light: true },
-    3: { name: 'CHAINGUN', rate: 0.06, dmg: 14, spd: 36, spread: 0.06, count: 1, sz: 0.08, color: 0xe8d040, sfx: 'chain', maxAmmo: 150, rTime: 1.0, ric: 2, recoil: 0.025, shake: 0.06, light: true, spinup: true },
-    4: { name: 'ROCKET', rate: 0.75, dmg: 120, spd: 20, spread: 0.01, count: 1, sz: 0.2, color: 0xe03818, sfx: 'rocket', maxAmmo: 12, rTime: 1.4, ric: 0, recoil: 0.2, shake: 0.4, expl: true, blast: 8, light: true, trail: 'rocket' },
-    5: { name: 'PLASMA', rate: 0.08, dmg: 24, spd: 38, spread: 0.04, count: 1, sz: 0.14, color: 0x40e8ff, sfx: 'plasma', maxAmmo: 80, rTime: 1.0, ric: 4, recoil: 0.03, shake: 0.08, light: true, trail: 'plasma' },
-    6: { name: 'BOMB', rate: 1.0, dmg: 240, spd: 14, spread: 0.02, count: 1, sz: 0.26, color: 0xe8d040, sfx: 'bomb', maxAmmo: 6, rTime: 1.6, ric: 0, recoil: 0.22, shake: 0.4, expl: true, blast: 5.5, light: true, trail: 'bomb' },
-    7: { name: 'MOLOTOV', rate: 0.9, dmg: 120, spd: 16, spread: 0.03, count: 1, sz: 0.2, color: 0xff6a20, sfx: 'molotov', maxAmmo: 8, rTime: 1.3, ric: 0, recoil: 0.18, shake: 0.3, fire: true, blast: 3.5, light: true, trail: 'fire' },
-    8: { name: 'LASER', rate: 0.025, dmg: 10, spd: 65, spread: 0.008, count: 1, sz: 0.07, color: 0xff2020, sfx: 'laser', maxAmmo: 200, rTime: 0.8, ric: 6, recoil: 0.015, shake: 0.05, light: true, trail: 'laser' },
-    9: { name: 'B.F.G.', rate: 2.0, dmg: 650, spd: 14, spread: 0.01, count: 1, sz: 0.5, color: 0x80ff40, sfx: 'bfg', maxAmmo: 3, rTime: 2.4, ric: 0, recoil: 0.3, shake: 0.6, expl: true, blast: 11, light: true, trail: 'bfg' },
+    1: { name: 'PISTOL', rate: 0.17, dmg: 22, spd: 60, spread: 0.012, count: 1, sz: 0.05, color: 0xffd040, sfx: 'shoot', maxAmmo: Infinity, ric: 3, recoil: 0.035, shake: 0.12, knock: 1.5, flash: 0.1 },
+    2: { name: 'SHOTGUN', rate: 0.55, dmg: 13, spd: 55, spread: 0.085, count: 9, sz: 0.04, color: 0xffa040, sfx: 'shotgun', maxAmmo: 24, rTime: 1.0, ric: 1, recoil: 0.11, shake: 0.5, knock: 1.6, flash: 0.2, shell: 0xc03020 },
+    3: { name: 'CHAINGUN', rate: 0.055, dmg: 13, spd: 65, spread: 0.035, count: 1, sz: 0.045, color: 0xffe060, sfx: 'chain', maxAmmo: 150, rTime: 1.2, ric: 2, recoil: 0.014, shake: 0.1, knock: 0.6, flash: 0.11, spinup: true, shell: 0xd0a040 },
+    4: { name: 'ROCKET', rate: 0.8, dmg: 130, spd: 26, spread: 0.004, count: 1, sz: 0.16, color: 0xff5a20, sfx: 'rocket', maxAmmo: 12, rTime: 1.5, ric: 0, recoil: 0.14, shake: 0.5, expl: true, blast: 6.5, knock: 9, flash: 0.22, trail: 'rocket' },
+    5: { name: 'PLASMA', rate: 0.085, dmg: 24, spd: 42, spread: 0.02, count: 1, sz: 0.13, color: 0x40d8ff, sfx: 'plasma', maxAmmo: 80, rTime: 1.1, ric: 4, recoil: 0.018, shake: 0.08, knock: 0.8, flash: 0.13, trail: 'plasma' },
+    6: { name: 'BOMB', rate: 0.9, dmg: 220, spd: 19, spread: 0.01, count: 1, sz: 0.2, color: 0xffd040, sfx: 'bomb', maxAmmo: 6, rTime: 1.6, ric: 0, recoil: 0.15, shake: 0.4, expl: true, blast: 6, knock: 10, flash: 0.16, trail: 'bomb', grav: 14, loft: 4 },
+    7: { name: 'MOLOTOV', rate: 0.8, dmg: 60, spd: 18, spread: 0.01, count: 1, sz: 0.15, color: 0xff7a20, sfx: 'molotov', maxAmmo: 8, rTime: 1.3, ric: 0, recoil: 0.1, shake: 0.2, fire: true, blast: 4, knock: 2, flash: 0, trail: 'fire', grav: 14, loft: 4.5 },
+    8: { name: 'LASER', rate: 0.03, dmg: 9, spd: 90, spread: 0.004, count: 1, sz: 0.05, color: 0xff2030, sfx: 'laser', maxAmmo: 200, rTime: 0.9, ric: 6, recoil: 0.005, shake: 0.03, knock: 0.2, flash: 0.07, trail: 'laser' },
+    9: { name: 'B.F.G.', rate: 1.8, dmg: 700, spd: 17, spread: 0.002, count: 1, sz: 0.45, color: 0x70ff40, sfx: 'bfg', maxAmmo: 3, rTime: 2.4, ric: 0, recoil: 0.25, shake: 0.9, expl: true, blast: 12, knock: 16, flash: 0.35, trail: 'bfg' },
 };
 export const WC = 9;
 
-// ===== WEAPON MESHES =====
-// Each builds a Group positioned at camera front with a muzzle tip.
+// ===== WEAPON MODELS =====
+// Same kit as the enemies: primitives merged per material, so a gun is 3-5 draw calls.
+// Guns point down -Z; userData.muzzle is the barrel tip in model space.
+let _env = null;
+export function setWeaponEnvMap(tex) { _env = tex; }
 
-function makeMetal(color = 0x3a3a3a, emissive = 0x000000) {
-    // Metalness lowered + emissive bump so weapon reads in dark biomes without env map
-    const em = emissive || color;
-    return new THREE.MeshStandardMaterial({ color, emissive: em, emissiveIntensity: 0.15, roughness: 0.55, metalness: 0.4 });
+function mats(tint, glowColor) {
+    return {
+        metal: new THREE.MeshStandardMaterial({ color: tint, roughness: 0.38, metalness: 0.75, envMap: _env, envMapIntensity: 1.1 }),
+        dark: new THREE.MeshStandardMaterial({ color: 0x2c2e34, roughness: 0.5, metalness: 0.6, envMap: _env, envMapIntensity: 0.8 }),
+        wood: new THREE.MeshStandardMaterial({ color: 0x7a4a26, roughness: 0.8, metalness: 0, flatShading: true }),
+        glow: new THREE.MeshStandardMaterial({ color: 0x000000, emissive: glowColor, emissiveIntensity: 2.2, roughness: 1 }),
+    };
 }
-function makeGrip(color = 0x2a1810) {
-    return new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.1, roughness: 0.85, metalness: 0.0 });
-}
-
-function makePistol() {
-    const g = new THREE.Group();
-    const body = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.14, 0.26), makeMetal(0x383a40));
-    body.position.set(0, 0, 0);
-    g.add(body);
-    const slide = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.07, 0.3), makeMetal(0x2a2c30));
-    slide.position.set(0, 0.07, 0);
-    g.add(slide);
-    const grip = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.18, 0.08), makeGrip());
-    grip.position.set(0, -0.14, 0.07);
-    g.add(grip);
-    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.1, 8), makeMetal(0x1a1c1e));
-    barrel.rotation.x = Math.PI / 2;
-    barrel.position.set(0, 0.03, -0.18);
-    g.add(barrel);
-    g.userData.muzzle = new THREE.Vector3(0, 0.03, -0.26);
-    return g;
-}
-
-function makeShotgun() {
-    const g = new THREE.Group();
-    const stock = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.12, 0.3), makeGrip(0x3a2812));
-    stock.position.set(0, 0, 0.18);
-    g.add(stock);
-    const body = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.14, 0.42), makeMetal(0x4a3020));
-    body.position.set(0, 0, -0.05);
-    g.add(body);
-    // Barrel over + under
-    const bt = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.5, 10), makeMetal(0x1a1a1a));
-    bt.rotation.x = Math.PI / 2;
-    bt.position.set(0, 0.07, -0.26);
-    g.add(bt);
-    const bb = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.5, 10), makeMetal(0x1a1a1a));
-    bb.rotation.x = Math.PI / 2;
-    bb.position.set(0, -0.02, -0.26);
-    g.add(bb);
-    // Pump
-    const pump = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.06, 0.12), makeGrip(0x2a1a0a));
-    pump.position.set(0, -0.06, -0.14);
-    g.add(pump);
-    g.userData.muzzle = new THREE.Vector3(0, 0.03, -0.52);
-    g.userData.pump = pump;
-    return g;
-}
-
-function makeChaingun() {
-    const g = new THREE.Group();
-    const body = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.18, 0.3), makeMetal(0x4a3030));
-    g.add(body);
-    // Barrel cluster
-    const cluster = new THREE.Group();
-    const barrelMat = makeMetal(0x1a1a1a);
-    for (let i = 0; i < 6; i++) {
-        const a = (i / 6) * Math.PI * 2;
-        const b = new THREE.Mesh(new THREE.CylinderGeometry(0.023, 0.023, 0.5, 8), barrelMat);
-        b.position.set(Math.cos(a) * 0.055, Math.sin(a) * 0.055, 0);
-        b.rotation.x = Math.PI / 2;
-        cluster.add(b);
+function assemble(parts, tint, glowColor, muzzle, glowAnim = null) {
+    const m = mats(tint, glowColor), g = new THREE.Group();
+    for (const k of ['metal', 'dark', 'wood', 'glow']) {
+        if (parts[k] && parts[k].length) g.add(new THREE.Mesh(merge(parts[k]), m[k])); else m[k].dispose();
     }
-    cluster.position.set(0, 0.02, -0.4);
-    g.add(cluster);
-    g.userData.cluster = cluster;
-    // Ammo box
-    const box = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.14, 0.14), makeMetal(0x3a3a3a));
-    box.position.set(0, -0.14, 0.05);
-    g.add(box);
-    g.userData.muzzle = new THREE.Vector3(0, 0.03, -0.7);
+    g.userData.muzzle = new THREE.Vector3(...muzzle);
+    if (glowAnim) { g.userData.glow = m.glow; g.userData.glowAnim = glowAnim; }
+    g.userData.m = m;
     return g;
 }
-
-function makeRocket() {
-    const g = new THREE.Group();
-    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.6, 12), makeMetal(0x5a2010));
-    body.rotation.x = Math.PI / 2;
-    body.position.set(0, 0, -0.15);
-    g.add(body);
-    // Front widening
-    const front = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.09, 0.08, 12), makeMetal(0x3a1010));
-    front.rotation.x = Math.PI / 2;
-    front.position.set(0, 0, -0.5);
-    g.add(front);
-    // Handle
-    const grip = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.16, 0.08), makeGrip());
-    grip.position.set(0, -0.14, 0);
-    g.add(grip);
-    g.userData.muzzle = new THREE.Vector3(0, 0, -0.56);
-    return g;
-}
-
-function makePlasma() {
-    const g = new THREE.Group();
-    const body = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.14, 0.34), makeMetal(0x204050, 0x001020));
-    body.position.set(0, 0, -0.04);
-    g.add(body);
-    // Glowing coil
-    const coil = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.3, 8),
-        new THREE.MeshStandardMaterial({ color: 0x40e8ff, emissive: 0x40e8ff, emissiveIntensity: 2, roughness: 0.3 }));
-    coil.rotation.x = Math.PI / 2;
-    coil.position.set(0, 0.04, -0.18);
-    g.add(coil);
-    g.userData.coil = coil;
-    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.05, 0.14, 8), makeMetal(0x2a4a60));
-    barrel.rotation.x = Math.PI / 2;
-    barrel.position.set(0, 0.02, -0.32);
-    g.add(barrel);
-    const grip = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.16, 0.08), makeGrip());
-    grip.position.set(0, -0.14, 0.05);
-    g.add(grip);
-    g.userData.muzzle = new THREE.Vector3(0, 0.02, -0.4);
-    return g;
-}
-
-function makeBomb() {
-    const g = new THREE.Group();
-    const body = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.14, 0.28), makeMetal(0x5a4020));
-    g.add(body);
-    const launcher = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.08, 0.3, 10), makeMetal(0x3a2010));
-    launcher.rotation.x = Math.PI / 2;
-    launcher.position.set(0, 0.03, -0.22);
-    g.add(launcher);
-    const grip = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.14, 0.08), makeGrip());
-    grip.position.set(0, -0.13, 0.08);
-    g.add(grip);
-    g.userData.muzzle = new THREE.Vector3(0, 0.03, -0.38);
-    return g;
-}
-
-function makeMolotov() {
-    const g = new THREE.Group();
-    // Bottle
-    const bottle = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.08, 0.26, 8),
-        new THREE.MeshStandardMaterial({ color: 0x60a060, roughness: 0.2, metalness: 0.1, transparent: true, opacity: 0.8, emissive: 0x2a4a20 }));
-    bottle.rotation.x = Math.PI / 2;
-    bottle.position.set(0, 0, -0.12);
-    g.add(bottle);
-    // Wick
-    const wick = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.1, 6),
-        new THREE.MeshStandardMaterial({ color: 0xffb060, emissive: 0xff6a20, emissiveIntensity: 2 }));
-    wick.rotation.x = Math.PI / 2;
-    wick.position.set(0, 0.04, -0.28);
-    g.add(wick);
-    g.userData.muzzle = new THREE.Vector3(0, 0.02, -0.28);
-    return g;
-}
-
-function makeLaser() {
-    const g = new THREE.Group();
-    const body = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.12, 0.26), makeMetal(0x301418, 0x400810));
-    g.add(body);
-    // Lens
-    const lens = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.015, 0.14, 8),
-        new THREE.MeshStandardMaterial({ color: 0xff2020, emissive: 0xff2020, emissiveIntensity: 3, roughness: 0.2 }));
-    lens.rotation.x = Math.PI / 2;
-    lens.position.set(0, 0, -0.22);
-    g.add(lens);
-    const grip = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.14, 0.08), makeGrip());
-    grip.position.set(0, -0.12, 0.07);
-    g.add(grip);
-    g.userData.muzzle = new THREE.Vector3(0, 0, -0.3);
-    g.userData.lens = lens;
-    return g;
-}
-
-function makeBFG() {
-    const g = new THREE.Group();
-    const body = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.22, 0.42), makeMetal(0x204020, 0x104010));
-    g.add(body);
-    // Central glowing orb
-    const orb = new THREE.Mesh(new THREE.SphereGeometry(0.11, 12, 10),
-        new THREE.MeshStandardMaterial({ color: 0x80ff40, emissive: 0x80ff40, emissiveIntensity: 2.5, roughness: 0.2 }));
-    orb.position.set(0, 0, -0.08);
-    g.add(orb);
-    g.userData.orb = orb;
-    // Prongs
-    for (let i = 0; i < 4; i++) {
-        const a = (i / 4) * Math.PI * 2;
-        const p = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.04, 0.3), makeMetal(0x4a8a4a));
-        p.position.set(Math.cos(a) * 0.1, Math.sin(a) * 0.1, -0.24);
-        g.add(p);
-    }
-    const grip = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.18, 0.1), makeGrip());
-    grip.position.set(0, -0.2, 0.1);
-    g.add(grip);
-    g.userData.muzzle = new THREE.Vector3(0, 0, -0.42);
-    return g;
-}
+const H = Math.PI / 2;
+const grip = (z = 0.08, y = -0.14) => P(box(0.075, 0.2, 0.095), 0, y, z, 0.28);
 
 const WEAP_BUILDERS = {
-    1: makePistol, 2: makeShotgun, 3: makeChaingun, 4: makeRocket,
-    5: makePlasma, 6: makeBomb, 7: makeMolotov, 8: makeLaser, 9: makeBFG,
+    1: () => assemble({
+        metal: [P(box(0.085, 0.08, 0.36), 0, 0.07, -0.03), P(box(0.02, 0.022, 0.02), 0, 0.12, -0.19), P(box(0.05, 0.02, 0.02), 0, 0.12, 0.12)],
+        dark: [P(box(0.08, 0.07, 0.26), 0, 0.0, 0.02), P(cyl(0.024, 0.024, 0.05, 8), 0, 0.072, -0.22, H), P(box(0.02, 0.02, 0.1), 0, -0.055, -0.03), P(box(0.02, 0.06, 0.02), 0, -0.04, 0.0)],
+        wood: [grip(0.1, -0.13)],
+    }, 0x8a8e98, 0xffd040, [0, 0.072, -0.25]),
+
+    2: () => assemble({
+        metal: [P(box(0.1, 0.13, 0.36), 0, 0.0, 0.04), P(box(0.02, 0.016, 0.62), 0, 0.085, -0.42)],
+        dark: [...both(s => P(cyl(0.036, 0.036, 0.64, 8), s * 0.037, 0.035, -0.44, H)), P(box(0.02, 0.07, 0.02), 0, -0.07, 0.02), P(box(0.02, 0.02, 0.12), 0, -0.1, 0.0)],
+        wood: [P(box(0.13, 0.075, 0.22), 0, -0.035, -0.34), P(box(0.08, 0.13, 0.34), 0, -0.05, 0.36, -0.16), grip(0.14, -0.13)],
+    }, 0x70747c, 0xffa040, [0, 0.035, -0.77]),
+
+    3: () => {
+        const g = assemble({
+            metal: [P(box(0.17, 0.17, 0.32), 0, 0, 0.06), P(cyl(0.1, 0.1, 0.06, 10), 0, 0, -0.12, H), P(box(0.035, 0.05, 0.22), 0, 0.14, 0.02), P(box(0.035, 0.07, 0.035), 0, 0.11, -0.07), P(box(0.035, 0.07, 0.035), 0, 0.11, 0.11)],
+            dark: [P(cyl(0.11, 0.11, 0.14, 10), -0.15, -0.05, 0.08, 0, 0, H), grip(0.12, -0.17)],
+            glow: [P(box(0.03, 0.012, 0.08), 0.087, 0.04, 0.05)],
+        }, 0x7c7468, 0xffe060, [0, 0, -0.72]);
+        const barrels = [];
+        for (let i = 0; i < 6; i++) { const a = i / 6 * 6.283; barrels.push(P(cyl(0.021, 0.021, 0.54, 6), Math.cos(a) * 0.06, Math.sin(a) * 0.06, -0.27, H)); }
+        barrels.push(P(cyl(0.088, 0.088, 0.03, 10), 0, 0, -0.5, H), P(cyl(0.088, 0.088, 0.03, 10), 0, 0, -0.2, H), P(cyl(0.03, 0.03, 0.54, 6), 0, 0, -0.27, H));
+        const cluster = new THREE.Mesh(merge(barrels), g.userData.m.dark);
+        cluster.position.z = -0.16;
+        g.add(cluster);
+        g.userData.cluster = cluster;
+        return g;
+    },
+
+    4: () => assemble({
+        metal: [P(cyl(0.085, 0.085, 0.84, 10), 0, 0, -0.2, H), P(cyl(0.085, 0.115, 0.1, 10), 0, 0, -0.66, H), P(cyl(0.11, 0.085, 0.1, 10), 0, 0, 0.25, H)],
+        dark: [P(box(0.04, 0.05, 0.2), 0.075, 0.115, -0.12), P(box(0.07, 0.05, 0.3), 0, -0.1, -0.1), grip(0.02, -0.19), grip(-0.26, -0.19), P(cyl(0.09, 0.09, 0.04, 10), 0, 0, -0.4, H)],
+        glow: [P(cone(0.055, 0.14, 8), 0, 0, -0.68, -H), P(box(0.012, 0.012, 0.1), 0.075, 0.145, -0.12)],
+    }, 0x66704a, 0xff5a20, [0, 0, -0.74]),
+
+    5: () => assemble({
+        metal: [P(box(0.12, 0.15, 0.42), 0, 0, 0.02), P(box(0.14, 0.04, 0.2), 0, 0.09, 0.06)],
+        dark: [P(cyl(0.04, 0.04, 0.42, 8), 0, 0.01, -0.36, H), P(cone(0.06, 0.1, 8), 0, 0.01, -0.6, H), grip(0.1, -0.16), ...both(s => P(box(0.012, 0.08, 0.3), s * 0.066, 0, 0.0))],
+        glow: [-0.24, -0.34, -0.44].map(z => P(cyl(0.07, 0.07, 0.03, 10), 0, 0.01, z, H)).concat([P(box(0.06, 0.012, 0.14), 0, 0.112, 0.06)]),
+    }, 0x48607a, 0x40d8ff, [0, 0.01, -0.64], { base: 2.0, amp: 0.7, speed: 0.01, fire: 1.2 }),
+
+    6: () => assemble({
+        metal: [P(cyl(0.12, 0.12, 0.2, 8), 0, 0, -0.02, H), P(box(0.07, 0.1, 0.24), 0, 0, 0.2)],
+        dark: [P(cyl(0.065, 0.075, 0.4, 8), 0, 0.02, -0.3, H), P(cyl(0.085, 0.085, 0.04, 8), 0, 0.02, -0.5, H), grip(0.2, -0.15), grip(-0.2, -0.14)],
+        wood: [P(box(0.07, 0.12, 0.26), 0, -0.03, 0.42, -0.14)],
+        glow: [0, 1, 2, 3].map(i => P(ball(0.014, 0), Math.cos(i * 1.57 + 0.78) * 0.123, Math.sin(i * 1.57 + 0.78) * 0.123, -0.02)),
+    }, 0x7a6a44, 0xffd040, [0, 0.02, -0.54]),
+
+    7: () => {
+        const g = assemble({
+            wood: [P(box(0.1, 0.1, 0.13), 0, -0.1, -0.06), P(cyl(0.045, 0.05, 0.3, 6), 0, -0.2, 0.1, 0.9)],
+            dark: [P(cyl(0.024, 0.03, 0.08, 8), 0, 0.2, -0.1)],
+            glow: [P(cone(0.035, 0.13, 5), 0, 0.3, -0.1), P(cone(0.02, 0.08, 4), 0.02, 0.33, -0.08, 0, 0, -0.3)],
+        }, 0x808080, 0xff7a20, [0, 0.28, -0.14], { base: 2.4, amp: 1.2, speed: 0.03, fire: 0 });
+        const bottle = new THREE.Mesh(merge([P(cyl(0.055, 0.062, 0.24, 8), 0, 0.05, -0.1), P(cone(0.055, 0.05, 8), 0, 0.19, -0.1)]),
+            new THREE.MeshStandardMaterial({ color: 0x4a9a50, emissive: 0x7a3a08, emissiveIntensity: 0.5, roughness: 0.15, metalness: 0.1, transparent: true, opacity: 0.8, envMap: _env }));
+        g.add(bottle);
+        return g;
+    },
+
+    8: () => assemble({
+        metal: [P(box(0.075, 0.1, 0.38), 0, 0, 0.02), P(box(0.05, 0.03, 0.12), 0, 0.075, 0.12)],
+        dark: [...both(s => P(box(0.014, 0.03, 0.52), s * 0.048, 0.02, -0.22)), P(cyl(0.03, 0.03, 0.1, 8), 0, 0.0, -0.22, H), grip(0.1, -0.13), P(box(0.1, 0.014, 0.03), 0, 0.02, -0.46)],
+        glow: [P(ball(0.028, 1), 0, 0.02, -0.44), P(box(0.02, 0.012, 0.3), 0, 0.058, -0.05), P(box(0.012, 0.012, 0.36), 0, 0.02, -0.26)],
+    }, 0x7a4048, 0xff2030, [0, 0.02, -0.5], { base: 2.0, amp: 0.3, speed: 0.02, fire: 3 }),
+
+    9: () => assemble({
+        metal: [P(cyl(0.15, 0.19, 0.42, 8), 0, 0, 0.08, H), P(cyl(0.17, 0.15, 0.08, 8), 0, 0, -0.16, H), P(box(0.1, 0.06, 0.3), 0, 0.17, 0.08)],
+        dark: [
+            ...[0.52, 2.62, 4.71].map(a => P(box(0.045, 0.055, 0.42), Math.cos(a) * 0.15, Math.sin(a) * 0.15, -0.34, 0, 0, a)),
+            P(cyl(0.2, 0.2, 0.05, 8), 0, 0, 0.3, H), grip(0.12, -0.24), grip(-0.14, -0.22),
+        ],
+        glow: [P(ball(0.105, 1), 0, 0, -0.3), P(box(0.05, 0.014, 0.2), 0, 0.203, 0.08), ...[0.52, 2.62, 4.71].map(a => P(box(0.016, 0.016, 0.36), Math.cos(a) * 0.118, Math.sin(a) * 0.118, -0.34))],
+    }, 0x4a7a4a, 0x70ff40, [0, 0, -0.58], { base: 2.4, amp: 1.0, speed: 0.006, fire: 2 }),
 };
 
+export function buildWeaponModel(k) { return WEAP_BUILDERS[k](); }
+
 // ===== WEAPON VIEW (first-person) =====
-// Attached to camera; swings/sways/kicks.
+// Child of the camera at half scale and half distance: same on-screen size, but it no longer pokes through walls.
+const BASE_LIGHT = 0.9;
+
 export class WeaponView {
     constructor(camera) {
-        this.camera = camera;
+        this.root = new THREE.Group();
+        this.root.scale.setScalar(0.42);
+        camera.add(this.root);
+        this.basePos = new THREE.Vector3(0.155, -0.14, -0.3);
         this.cache = {};
         this.current = null;
         this.currentKey = 0;
-        this.basePos = new THREE.Vector3(0.28, -0.25, -0.55);
-        this.kick = 0;
-        this.spin = 0; // chaingun spin
-        this.spinup = 0;
-    }
+        this.kick = 0; this.raise = 0; this.dip = 0;
+        this.spin = 0; this.spinup = 0;
+        this.flashT = 0; this.flashSize = 0.1;
 
-    _get(k) {
-        if (!this.cache[k]) this.cache[k] = WEAP_BUILDERS[k]();
-        return this.cache[k];
+        this.flash = new THREE.Mesh(new THREE.IcosahedronGeometry(1, 0),
+            new THREE.MeshBasicMaterial({ transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+        this.flash.visible = false;
+
+        // Fill light (PBR gun needs a direct light in dark biomes); doubles as the muzzle flash light.
+        this.light = new THREE.PointLight(0xfff0d8, BASE_LIGHT, 9, 2);
+        this.light.position.set(0.35, 0.3, 0.25);
+        camera.add(this.light);
+        this._base = new THREE.Color(0xfff0d8);
+        this._flashCol = new THREE.Color();
     }
 
     setWeapon(k) {
-        if (this.currentKey === k && this.current) return;
-        if (this.current) this.camera.remove(this.current);
-        const g = this._get(k);
-        this.camera.add(g);
-        this.current = g;
+        if (this.currentKey === k) return;
+        if (this.current) this.root.remove(this.current);
+        if (!this.cache[k]) this.cache[k] = WEAP_BUILDERS[k]();
+        this.current = this.cache[k];
+        this.root.add(this.current);
+        this.current.add(this.flash);
+        this.flash.position.copy(this.current.userData.muzzle);
+        this.flash.visible = false;
         this.currentKey = k;
-        this.spin = 0; this.spinup = 0;
+        this.spin = 0; this.spinup = 0; this.raise = 1; this.kick = 0;
     }
 
-    update(dt, { firing, swayX, swayY }) {
+    fire(def) {
+        this.kick = Math.min(1, this.kick + def.recoil * 4);
+        if (def.flash > 0) {
+            this.flashT = 0.055;
+            this.flashSize = def.flash;
+            this.flash.material.color.set(def.color).multiplyScalar(1.5);
+            this.flash.rotation.set(Math.random() * 6, Math.random() * 6, Math.random() * 6);
+            this._flashCol.set(def.color);
+        }
+    }
+
+    update(dt, { firing, swayX, swayY, reloading }) {
         if (!this.current) return;
-        // Base position with sway + kick
-        const sx = THREE.MathUtils.clamp(swayX, -0.08, 0.08);
-        const sy = THREE.MathUtils.clamp(swayY, -0.08, 0.08);
-        this.current.position.set(
-            this.basePos.x + sx,
-            this.basePos.y + sy - this.kick * 0.4,
-            this.basePos.z - this.kick * 0.5
-        );
-        this.current.rotation.set(sy * 0.6, -sx * 0.6 - 0.05, -this.kick * 0.6);
-        this.kick = Math.max(0, this.kick - dt * 4);
+        this.kick += (0 - this.kick) * Math.min(1, dt * 11);
+        this.raise = Math.max(0, this.raise - dt * 5);
+        this.dip += ((reloading ? 1 : 0) - this.dip) * Math.min(1, dt * 9);
 
-        // Chaingun spin
+        this.root.position.set(
+            this.basePos.x + swayX,
+            this.basePos.y + swayY - this.raise * 0.25 - this.dip * 0.1,
+            this.basePos.z + this.kick * 0.07);
+        this.root.rotation.set(swayY * 1.5 + this.kick * 0.3 - this.raise * 0.9 - this.dip * 0.5, -swayX * 1.5 + 0.03, this.dip * 0.5);
+
+        if (this.flashT > 0) {
+            this.flashT -= dt;
+            const f = Math.max(0, this.flashT / 0.055);
+            this.flash.visible = true;
+            this.flash.scale.setScalar(this.flashSize * (1.5 - 0.6 * f));
+            this.flash.material.opacity = f;
+            this.light.color.copy(this._flashCol);
+            this.light.intensity = BASE_LIGHT + 2.2 * f * (0.5 + this.flashSize * 4);
+        } else {
+            this.flash.visible = false;
+            this.light.color.copy(this._base);
+            this.light.intensity = BASE_LIGHT;
+        }
+
+        const u = this.current.userData, now = performance.now();
         if (this.currentKey === 3) {
-            const target = firing ? 1 : 0;
-            this.spinup += (target - this.spinup) * Math.min(1, dt * 4);
-            this.spin += this.spinup * 24 * dt;
-            if (this.current.userData.cluster) this.current.userData.cluster.rotation.z = this.spin;
+            this.spinup += ((firing ? 1 : 0) - this.spinup) * Math.min(1, dt * 5);
+            this.spin += this.spinup * 26 * dt;
+            u.cluster.rotation.z = this.spin;
         }
-        // Plasma coil glow
-        if (this.currentKey === 5 && this.current.userData.coil) {
-            const e = 1.5 + Math.sin(performance.now() * 0.01) * 0.6;
-            this.current.userData.coil.material.emissiveIntensity = e;
-        }
-        // BFG pulsing orb
-        if (this.currentKey === 9 && this.current.userData.orb) {
-            const e = 2.5 + Math.sin(performance.now() * 0.006) * 1.2;
-            this.current.userData.orb.material.emissiveIntensity = e;
-        }
-        // Laser lens pulse
-        if (this.currentKey === 8 && this.current.userData.lens) {
-            const e = firing ? 5 : 2.5;
-            this.current.userData.lens.material.emissiveIntensity = e;
-        }
+        if (u.glow) { const a = u.glowAnim; u.glow.emissiveIntensity = a.base + Math.sin(now * a.speed) * a.amp + (firing ? a.fire : 0); }
     }
 
-    kickBack(a) { this.kick = Math.min(1, this.kick + a); }
-
-    getMuzzleWorld(outVec) {
-        if (!this.current) return outVec.set(0, 0, 0);
-        const local = this.current.userData.muzzle;
-        outVec.copy(local);
-        this.current.localToWorld(outVec);
-        return outVec;
+    getMuzzleWorld(out) {
+        this.root.updateWorldMatrix(true, true);
+        return this.current.localToWorld(out.copy(this.current.userData.muzzle));
     }
 }
 
-// ===== BULLET / PROJECTILE =====
-// Factory returns a bullet descriptor consumed by game loop.
-export function makeBullet(pl, def, muzzleWorld, dirX, dirZ, dirY = 0, overrides = {}) {
-    const spread = def.spread;
-    const a = Math.atan2(dirZ, dirX);
-    const spreadA = a + (Math.random() - 0.5) * spread * 2;
-    const vx = Math.cos(spreadA) * def.spd;
-    const vz = Math.sin(spreadA) * def.spd;
-    const vy = dirY * def.spd + (Math.random() - 0.5) * spread * def.spd;
+// ===== PROJECTILES =====
+const _ball = new THREE.SphereGeometry(1, 8, 6);
+const _mats = new Map();
+export function glowMaterial(color, boost = 2.2) {
+    const key = color + ':' + boost;
+    if (!_mats.has(key)) _mats.set(key, new THREE.MeshBasicMaterial({ color: new THREE.Color(color).multiplyScalar(boost) }));
+    return _mats.get(key);
+}
+
+// Shared geometry + cached material: nothing to dispose per bullet.
+export function makeBulletMesh(def) {
+    const m = new THREE.Mesh(_ball, glowMaterial(def.color));
+    const s = def.sz;
+    if (def.trail === 'laser') m.scale.set(s * 0.45, s * 0.45, s * 9);
+    else if (def.expl || def.fire || def.trail === 'plasma') m.scale.setScalar(s);
+    else m.scale.set(s * 0.7, s * 0.7, s * 7);
+    return m;
+}
+export function makeOrbMesh(color, r) {
+    const m = new THREE.Mesh(_ball, glowMaterial(color, 1.5));
+    m.scale.setScalar(r);
+    return m;
+}
+
+export function makeBullet(key, origin, dir, dmgMul = 1) {
+    const def = WEAP[key], sp = def.spread;
+    let dx = dir.x + (Math.random() - 0.5) * 2 * sp;
+    let dy = dir.y + (Math.random() - 0.5) * 1.2 * sp;
+    let dz = dir.z + (Math.random() - 0.5) * 2 * sp;
+    const l = Math.hypot(dx, dy, dz);
+    dx /= l; dy /= l; dz /= l;
     return {
-        x: muzzleWorld.x, y: muzzleWorld.y, z: muzzleWorld.z,
-        vx, vy, vz,
-        dmg: def.dmg * (pl?.dmgM || 1),
-        sz: def.sz,
-        color: def.color,
-        ric: def.ric,
-        ricLeft: def.ric,
-        lifetime: 2.5,
-        expl: def.expl || false,
-        blast: def.blast || 0,
-        fire: def.fire || false,
-        trail: def.trail || null,
-        light: def.light || false,
-        weapKey: def._key,
-        ...overrides,
+        key, x: origin.x, y: origin.y, z: origin.z,
+        vx: dx * def.spd, vy: dy * def.spd + (def.loft || 0), vz: dz * def.spd,
+        dmg: def.dmg * dmgMul, sz: def.sz, color: def.color,
+        ricLeft: def.ric, life: 2.5,
+        expl: !!def.expl, fire: !!def.fire, blast: def.blast || 0,
+        trail: def.trail || null, grav: def.grav || 0, knock: def.knock || 0,
+        mesh: null, light: null,
     };
 }

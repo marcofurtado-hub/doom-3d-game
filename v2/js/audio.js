@@ -27,6 +27,9 @@ export class Audio {
         this.ambGain = this.ac.createGain(); this.ambGain.gain.value = 0.5; this.ambGain.connect(this.master);
     }
 
+    // Browsers (iOS especially) keep the context suspended until a user gesture
+    resume() { if (this.ac && this.ac.state !== 'running') this.ac.resume().catch(() => {}); }
+
     setVolume(v) {
         this.volume = v;
         if (this.master) this.master.gain.value = v;
@@ -61,20 +64,18 @@ export class Audio {
         s.start(); s.stop(this.ac.currentTime + duration);
     }
 
-    // Positional 3D sound (PannerNode) — subset of SFX use this
-    _spatial(x, z, player, baseGain) {
-        if (!this.ac) return baseGain;
+    // Positional sound: world offset rotated into listener space (listener looks down -Z).
+    _spatial(x, z, player) {
         const panner = this.ac.createPanner();
-        panner.panningModel = 'HRTF';
+        panner.panningModel = 'equalpower';
         panner.distanceModel = 'linear';
-        panner.maxDistance = 40;
-        panner.rolloffFactor = 1;
-        // Translate world coords (x,z) relative to player
+        panner.refDistance = 2; panner.maxDistance = 45; panner.rolloffFactor = 1;
         const dx = x - player.x, dz = z - player.z;
-        panner.positionX.value = dx;
+        const ca = Math.cos(player.angle), sa = Math.sin(player.angle);
+        panner.positionX.value = -dx * sa + dz * ca;   // right
         panner.positionY.value = 0;
-        panner.positionZ.value = dz;
-        panner.connect(baseGain);
+        panner.positionZ.value = -(dx * ca + dz * sa); // ahead = -Z
+        panner.connect(this.sfxGain);
         return panner;
     }
 
@@ -106,57 +107,79 @@ export class Audio {
     explode() { this._noise(0.4, 0.22, 1800); this._tone(60, 0.35, 'sawtooth', 0.14); this._tone(30, 0.45, 'square', 0.1); }
     dash() { this._tone(500, 0.04, 'sine', 0.04); this._tone(800, 0.03, 'sine', 0.03); }
     ricochet() { this._noise(0.06, 0.08, 4500); this._tone(3000 + Math.random() * 2000, 0.03, 'sine', 0.03); this._tone(100 + Math.random() * 60, 0.08, 'sine', 0.04); }
+    hurt() { this._noise(0.12, 0.14, 900); this._tone(110, 0.14, 'sawtooth', 0.09); }
+    swap() { this._tone(320, 0.04, 'square', 0.03); this._noise(0.04, 0.05, 5000); }
+    reload() { this._noise(0.05, 0.07, 6000); this._tone(900, 0.03, 'square', 0.02); }
+    empty() { this._tone(1400, 0.02, 'square', 0.025); }
+    spawn() { this._tone(70, 0.3, 'sine', 0.07); this._noise(0.2, 0.04, 700); }
+    upgrade() { [440, 554, 659, 880].forEach((f, i) => setTimeout(() => this._tone(f, 0.18, 'triangle', 0.06), i * 70)); }
+    waveClear() { [330, 440, 660].forEach((f, i) => setTimeout(() => this._tone(f, 0.25, 'sawtooth', 0.05), i * 110)); }
+    death() { this._noise(0.9, 0.25, 600); this._tone(90, 1.0, 'sawtooth', 0.14); this._tone(45, 1.2, 'sine', 0.2); }
+    stomp() { this._noise(0.3, 0.25, 400); this._tone(40, 0.4, 'sine', 0.25); }
+    enemyShot(x, z, player) {
+        if (!this.ac) return;
+        const dest = this._spatial(x, z, player), t = this.ac.currentTime;
+        const o = this.ac.createOscillator(), g = this.ac.createGain();
+        o.type = 'sawtooth'; o.frequency.setValueAtTime(700, t); o.frequency.exponentialRampToValueAtTime(200, t + 0.12);
+        g.gain.setValueAtTime(0.09, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.14);
+        o.connect(g); g.connect(dest); o.start(); o.stop(t + 0.15);
+    }
     growl(x, z, player) {
         if (!this.ac) return;
-        const g = this.ac.createGain(); g.gain.value = 0.9;
-        const panner = this._spatial(x, z, player, this.sfxGain);
-        const dest = panner || this.sfxGain;
-        const o = this.ac.createOscillator(), og = this.ac.createGain();
-        o.type = 'sawtooth'; o.frequency.setValueAtTime(90 + Math.random() * 60, this.ac.currentTime);
-        o.frequency.exponentialRampToValueAtTime(40, this.ac.currentTime + 0.3);
-        og.gain.setValueAtTime(0.08, this.ac.currentTime);
-        og.gain.exponentialRampToValueAtTime(0.001, this.ac.currentTime + 0.35);
-        o.connect(og); og.connect(dest); o.start(); o.stop(this.ac.currentTime + 0.4);
+        const dest = this._spatial(x, z, player), t = this.ac.currentTime;
+        const o = this.ac.createOscillator(), g = this.ac.createGain();
+        o.type = 'sawtooth'; o.frequency.setValueAtTime(90 + Math.random() * 60, t);
+        o.frequency.exponentialRampToValueAtTime(40, t + 0.3);
+        g.gain.setValueAtTime(0.16, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
+        o.connect(g); g.connect(dest); o.start(); o.stop(t + 0.4);
     }
 
     // ===== AMBIENT BIOME PAD =====
     stopAmbient() {
-        for (const o of this.ambOscs) try { o.stop(); } catch (e) {}
+        if (!this.ac) return;
+        const t = this.ac.currentTime;
+        for (const { o, g } of this.ambOscs) {
+            g.gain.cancelScheduledValues(t);
+            g.gain.setValueAtTime(g.gain.value, t);
+            g.gain.linearRampToValueAtTime(0, t + 0.6);
+            o.stop(t + 0.7);
+        }
         this.ambOscs.length = 0;
     }
+    // Cross-fades to the biome's drone: detuned low saws + a slow-breathing lead + texture partials.
     setAmbient(biome) {
         if (!this.ac) return;
         this.stopAmbient();
-        const cfg = biome.audioAmbient;
-        const now = this.ac.currentTime;
-
-        // Low pad drone
-        const makeOsc = (freq, type, vol) => {
+        const cfg = biome.audioAmbient, now = this.ac.currentTime;
+        const lp = this.ac.createBiquadFilter();
+        lp.type = 'lowpass'; lp.frequency.value = 900;
+        lp.connect(this.ambGain);
+        const mk = (freq, type, vol, lfo = 0) => {
             const o = this.ac.createOscillator(), g = this.ac.createGain();
             o.type = type; o.frequency.value = freq;
             g.gain.setValueAtTime(0, now);
             g.gain.linearRampToValueAtTime(vol, now + 1.5);
-            o.connect(g); g.connect(this.ambGain);
-            o.start();
-            this.ambOscs.push(o);
-            return { o, g };
+            o.connect(g); g.connect(lp); o.start();
+            this.ambOscs.push({ o, g });
+            if (lfo) {
+                const l = this.ac.createOscillator(), lg = this.ac.createGain();
+                l.frequency.value = lfo; lg.gain.value = vol * 0.7;
+                l.connect(lg); lg.connect(g.gain); l.start();
+                this.ambOscs.push({ o: l, g: lg });
+            }
         };
-
-        makeOsc(cfg.base, 'sawtooth', 0.04);
-        makeOsc(cfg.base * 1.5, 'sine', 0.025);
-        makeOsc(cfg.lead, 'sine', 0.018);
-
-        // Textured LFO on amplitude based on cfg.texture
-        if (cfg.texture === 'rumble' || cfg.texture === 'crystal') {
-            makeOsc(cfg.lead * 2, 'sine', 0.012);
-        }
-        if (cfg.texture === 'choir') {
-            makeOsc(cfg.lead * 1.333, 'sine', 0.015);
-            makeOsc(cfg.lead * 1.666, 'sine', 0.012);
-        }
-        if (cfg.texture === 'hum') {
-            makeOsc(cfg.base * 2, 'sawtooth', 0.02);
-        }
+        mk(cfg.base, 'sawtooth', 0.05);
+        mk(cfg.base * 1.007, 'sawtooth', 0.04);
+        mk(cfg.base * 1.5, 'sine', 0.03, 0.13);
+        mk(cfg.lead, 'sine', 0.025, 0.21);
+        const tx = cfg.texture;
+        if (tx === 'rumble') mk(cfg.base * 0.5, 'sine', 0.08, 0.4);
+        if (tx === 'hum') { mk(cfg.base * 2, 'square', 0.012); mk(cfg.base * 3, 'sine', 0.012, 7); }
+        if (tx === 'choir') { mk(cfg.lead * 1.25, 'sine', 0.02, 0.17); mk(cfg.lead * 1.5, 'sine', 0.018, 0.11); mk(cfg.lead * 2, 'sine', 0.01, 0.3); }
+        if (tx === 'pad') { mk(cfg.lead * 1.2, 'triangle', 0.02, 0.07); mk(cfg.lead * 1.8, 'sine', 0.012, 0.05); }
+        if (tx === 'crystal') { mk(cfg.lead * 4, 'sine', 0.006, 1.3); mk(cfg.lead * 6.01, 'sine', 0.004, 0.9); }
+        if (tx === 'wind') mk(cfg.lead * 0.99, 'sawtooth', 0.015, 0.33);
+        if (tx === 'drip') mk(cfg.lead * 3, 'sine', 0.006, 2.1);
     }
 
     // ===== COMBAT MUSIC =====

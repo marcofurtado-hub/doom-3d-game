@@ -1,31 +1,22 @@
-// Unified input: keyboard + mouse + touch. Preserves v1 mobile fixes.
+// Unified input: keyboard + mouse (pointer lock) + touch. Mobile contract carried over from v1:
+// left half = analog joystick, right half = look drag, fingers resting on buttons also rotate the camera,
+// menu taps never start firing.
 
 export class Input {
-    constructor({ player, isMobile, onPause, onFire, onReload, onWeapon, onCycleWep, onStart }) {
+    constructor({ player, isMobile, canPlay, onPause, onReload, onWeapon, onCycleWep, onStart }) {
         this.pl = player;
         this.isMobile = isMobile;
-        this.onPause = onPause;
-        this.onFire = onFire;
-        this.onReload = onReload;
-        this.onWeapon = onWeapon;
-        this.onCycleWep = onCycleWep;
-        this.onStart = onStart;
+        this.canPlay = canPlay;     // () => true while gameplay input should apply
+        this.cb = { onPause, onReload, onWeapon, onCycleWep, onStart };
 
         this.keys = {};
-        this.mDown = false;
         this.firing = false;
-        this.clicked = false;
-        this.paused = false;
         this.state = 'menu';
-
-        this.lookDx = 0;
-        this.lookDy = 0;
-        this.moveFwd = 0;
-        this.moveStr = 0;
-
-        this.joyTouchId = null;
-        this.joyStart = null;
+        this.lookDx = 0; this.lookDy = 0;
+        this.moveFwd = 0; this.moveStr = 0;
+        this.joyTouchId = null; this.joyStart = null;
         this.lookTouches = new Map();
+        this._wheelT = 0;
 
         this.MOUSE_SENS = 0.0022;
         this.TOUCH_LOOK_SENS = 0.02;
@@ -34,268 +25,173 @@ export class Input {
         this._setupKeyboard();
         this._setupMouse();
         if (isMobile) this._setupTouch();
+        addEventListener('blur', () => this.releaseAll());
     }
 
     setState(s) { this.state = s; }
-    setPaused(p) { this.paused = p; }
+
+    releaseAll() {
+        this.firing = false;
+        this.keys = {};
+        this.moveFwd = 0; this.moveStr = 0;
+        this.joyTouchId = null;
+        this.lookTouches.clear();
+        document.getElementById('joy-base').classList.remove('on');
+        document.getElementById('joy-knob').classList.remove('on');
+        document.getElementById('btn-fire').classList.remove('on');
+    }
+
+    lock() {
+        if (this.isMobile || document.pointerLockElement) return;
+        try { const p = document.body.requestPointerLock(); if (p && p.catch) p.catch(() => {}); } catch (e) {}
+    }
+    unlock() { if (document.pointerLockElement) document.exitPointerLock(); }
+
+    _look(dx, dy, sens) {
+        this.pl.angle += dx * sens;
+        this.pl.pitch = Math.max(-this.PITCH_MAX, Math.min(this.PITCH_MAX, this.pl.pitch - dy * sens));
+        this.lookDx += dx; this.lookDy += dy;
+    }
 
     _setupKeyboard() {
         addEventListener('keydown', e => {
+            if (e.target.tagName === 'INPUT') return;
             const k = e.key.toLowerCase();
+            if (this.state === 'play' && (k === 'tab' || k === ' ')) e.preventDefault();
+            if (e.repeat) return;
             this.keys[k] = true;
-            if (e.key === 'Escape' && this.state === 'play') {
-                this.onPause?.();
-            }
-            if (['1', '2', '3', '4', '5', '6', '7', '8', '9'].includes(e.key) && this.state === 'play') {
-                this.onWeapon?.(parseInt(e.key));
-            }
-            if (k === 'r' && this.state === 'play') this.onReload?.();
-        });
-        addEventListener('keyup', e => {
-            const k = e.key.toLowerCase();
-            this.keys[k] = false;
-        });
-        addEventListener('wheel', e => {
             if (this.state !== 'play') return;
-            this.onCycleWep?.(e.deltaY > 0 ? 1 : -1);
+            if (e.key === 'Escape' || k === 'p') this.cb.onPause();
+            else if (k >= '1' && k <= '9') this.cb.onWeapon(+k);
+            else if (k === 'r') this.cb.onReload();
+            else if (k === 'q') this.cb.onCycleWep(-1);
+            else if (k === 'e') this.cb.onCycleWep(1);
+        });
+        addEventListener('keyup', e => { this.keys[e.key.toLowerCase()] = false; });
+        addEventListener('wheel', e => {
+            if (!this.canPlay()) return;
+            const now = performance.now();
+            if (now - this._wheelT < 110) return; // trackpads fire dozens of events per gesture
+            this._wheelT = now;
+            this.cb.onCycleWep(e.deltaY > 0 ? 1 : -1);
         }, { passive: true });
     }
 
     _setupMouse() {
         addEventListener('mousemove', e => {
-            if (document.pointerLockElement) {
-                this.pl.angle += e.movementX * this.MOUSE_SENS;
-                this.pl.pitch -= e.movementY * this.MOUSE_SENS;
-                if (this.pl.pitch > this.PITCH_MAX) this.pl.pitch = this.PITCH_MAX;
-                if (this.pl.pitch < -this.PITCH_MAX) this.pl.pitch = -this.PITCH_MAX;
-                this.lookDx = e.movementX;
-                this.lookDy = e.movementY;
-            }
+            if (!document.pointerLockElement || !this.canPlay()) return;
+            // Some browsers report one bogus jump right after the lock engages or a button changes; drop it
+            if (this._skipMove) { this._skipMove = false; return; }
+            this._look(e.movementX, e.movementY, this.MOUSE_SENS);
         });
         addEventListener('mousedown', e => {
-            if (e.button === 0) {
-                this.mDown = true;
-                this.firing = true;
-                this.clicked = true;
-                if (this.state === 'menu') { this.onStart?.(); return; }
-                if (!this.isMobile && !this.paused && !document.pointerLockElement && this.state === 'play') {
-                    try { document.body.requestPointerLock(); } catch (err) {}
-                }
+            if (e.button !== 0) return;
+            if (this.state === 'menu') {
+                if (!e.target.closest || !e.target.closest('.nostart')) this.cb.onStart();
+                return;
             }
+            if (!this.canPlay()) return;
+            if (!this.isMobile && !document.pointerLockElement) { this.lock(); return; }
+            this.firing = true;
         });
-        addEventListener('mouseup', e => {
-            if (e.button === 0) {
-                this.mDown = false;
-                this.firing = false;
-            }
-        });
+        addEventListener('mouseup', e => { if (e.button === 0) this.firing = false; });
         addEventListener('contextmenu', e => e.preventDefault());
-
         document.addEventListener('pointerlockchange', () => {
-            document.body.classList.toggle('locked', !!document.pointerLockElement);
-            if (this.state === 'play' && !document.pointerLockElement && !this.paused) {
-                this.onPause?.();
+            const locked = !!document.pointerLockElement;
+            this._skipMove = locked;
+            document.body.classList.toggle('locked', locked);
+            if (!locked) {
+                this.firing = false;
+                if (this.canPlay()) this.cb.onPause(); // Esc while locked: the browser eats the key
             }
         });
     }
 
     _setupTouch() {
+        const $ = id => document.getElementById(id);
+        const base = $('joy-base'), knob = $('joy-knob');
         const addLook = (id, x, y) => this.lookTouches.set(id, { x, y });
-        const removeLook = (id) => this.lookTouches.delete(id);
-        const registerLookTouches = (e) => { for (const t of e.changedTouches) addLook(t.identifier, t.clientX, t.clientY); };
-        const unregisterLookTouches = (e) => { for (const t of e.changedTouches) removeLook(t.identifier); };
+        const regLook = e => { for (const t of e.changedTouches) addLook(t.identifier, t.clientX, t.clientY); };
+        const unregLook = e => { for (const t of e.changedTouches) this.lookTouches.delete(t.identifier); };
+        const isBtn = t => !!(t.closest && t.closest('.mbtn'));
 
-        const isBtnTarget = (t) => {
-            let n = t;
-            while (n && n !== document.body) {
-                if (n.classList && n.classList.contains('mbtn')) return true;
-                n = n.parentNode;
-            }
-            return false;
-        };
-        const showJoy = (x, y) => {
-            const b = document.getElementById('joy-base'), k = document.getElementById('joy-knob');
-            b.style.left = (x - 60) + 'px'; b.style.top = (y - 60) + 'px';
-            k.style.left = (x - 30) + 'px'; k.style.top = (y - 30) + 'px';
-            b.classList.add('on'); k.classList.add('on');
-        };
-        const updJoyKnob = (sx, sy, tx, ty, mr) => {
-            const k = document.getElementById('joy-knob');
-            const dx = tx - sx, dy = ty - sy, m = Math.hypot(dx, dy);
-            const cm = Math.min(m, mr);
-            const nx = m > 0 ? (dx / m) * cm : 0, ny = m > 0 ? (dy / m) * cm : 0;
-            k.style.left = (sx + nx - 30) + 'px'; k.style.top = (sy + ny - 30) + 'px';
-        };
-        const hideJoy = () => {
-            document.getElementById('joy-base').classList.remove('on');
-            document.getElementById('joy-knob').classList.remove('on');
-        };
-
-        const onTouchStart = (e) => {
-            if (isBtnTarget(e.target)) return;
-            const inMenu = (this.state === 'menu' || this.state === 'dead' || this.paused);
+        const onStart = e => {
+            if (isBtn(e.target)) return;
+            if (!this.canPlay()) return; // menus: let the browser deliver clicks
             for (const t of e.changedTouches) {
                 const x = t.clientX, y = t.clientY;
-                if (inMenu) { this.clicked = true; continue; }
-                if (x < innerWidth / 2) {
-                    if (this.joyTouchId === null) {
-                        this.joyTouchId = t.identifier;
-                        this.joyStart = { x, y };
-                        showJoy(x, y);
-                    } else {
-                        addLook(t.identifier, x, y);
-                    }
-                } else {
-                    addLook(t.identifier, x, y);
-                }
+                if (x < innerWidth / 2 && this.joyTouchId === null) {
+                    this.joyTouchId = t.identifier; this.joyStart = { x, y };
+                    base.style.left = (x - 60) + 'px'; base.style.top = (y - 60) + 'px';
+                    knob.style.left = (x - 30) + 'px'; knob.style.top = (y - 30) + 'px';
+                    base.classList.add('on'); knob.classList.add('on');
+                } else addLook(t.identifier, x, y);
             }
-            if (!inMenu) e.preventDefault();
+            e.preventDefault();
         };
-
-        const onTouchMove = (e) => {
-            const inMenu = (this.state === 'menu' || this.state === 'dead' || this.paused);
+        const onMove = e => {
+            if (!this.canPlay()) return;
             for (const t of e.changedTouches) {
                 if (t.identifier === this.joyTouchId) {
-                    const jdx = t.clientX - this.joyStart.x, jdy = t.clientY - this.joyStart.y;
-                    const m = Math.hypot(jdx, jdy), mr = 55;
-                    if (m > 6) {
-                        const n = Math.min(1, m / mr);
-                        this.moveStr = (jdx / m) * n;
-                        this.moveFwd = -(jdy / m) * n;
-                    } else {
-                        this.moveStr = 0; this.moveFwd = 0;
-                    }
-                    updJoyKnob(this.joyStart.x, this.joyStart.y, t.clientX, t.clientY, mr);
+                    const dx = t.clientX - this.joyStart.x, dy = t.clientY - this.joyStart.y;
+                    const m = Math.hypot(dx, dy), mr = 55;
+                    if (m > 6) { const n = Math.min(1, m / mr); this.moveStr = (dx / m) * n; this.moveFwd = -(dy / m) * n; }
+                    else { this.moveStr = 0; this.moveFwd = 0; }
+                    const cm = Math.min(m, mr), nx = m > 0 ? dx / m * cm : 0, ny = m > 0 ? dy / m * cm : 0;
+                    knob.style.left = (this.joyStart.x + nx - 30) + 'px'; knob.style.top = (this.joyStart.y + ny - 30) + 'px';
                 } else if (this.lookTouches.has(t.identifier)) {
                     const prev = this.lookTouches.get(t.identifier);
-                    const dx = t.clientX - prev.x, dy = t.clientY - prev.y;
-                    this.pl.angle += dx * this.TOUCH_LOOK_SENS;
-                    this.pl.pitch -= dy * this.TOUCH_LOOK_SENS;
-                    if (this.pl.pitch > this.PITCH_MAX) this.pl.pitch = this.PITCH_MAX;
-                    if (this.pl.pitch < -this.PITCH_MAX) this.pl.pitch = -this.PITCH_MAX;
-                    this.lookDx = dx; this.lookDy = dy;
-                    this.lookTouches.set(t.identifier, { x: t.clientX, y: t.clientY });
+                    this._look(t.clientX - prev.x, t.clientY - prev.y, this.TOUCH_LOOK_SENS);
+                    prev.x = t.clientX; prev.y = t.clientY;
                 }
             }
-            if (!inMenu) e.preventDefault();
+            e.preventDefault();
         };
-
-        const onTouchEnd = (e) => {
+        const onEnd = e => {
             for (const t of e.changedTouches) {
                 if (t.identifier === this.joyTouchId) {
-                    this.joyTouchId = null;
-                    this.moveStr = 0; this.moveFwd = 0;
-                    hideJoy();
+                    this.joyTouchId = null; this.moveStr = 0; this.moveFwd = 0;
+                    base.classList.remove('on'); knob.classList.remove('on');
                 }
-                if (this.lookTouches.has(t.identifier)) removeLook(t.identifier);
+                this.lookTouches.delete(t.identifier);
             }
         };
+        addEventListener('touchstart', onStart, { passive: false });
+        addEventListener('touchmove', onMove, { passive: false });
+        addEventListener('touchend', onEnd, { passive: false });
+        addEventListener('touchcancel', onEnd, { passive: false });
 
-        addEventListener('touchstart', onTouchStart, { passive: false });
-        addEventListener('touchmove', onTouchMove, { passive: false });
-        addEventListener('touchend', onTouchEnd, { passive: false });
-        addEventListener('touchcancel', onTouchEnd, { passive: false });
-
-        // ===== BUTTONS =====
-        const bFire = document.getElementById('btn-fire');
-        bFire.addEventListener('touchstart', e => {
-            this.mDown = true; this.firing = true; this.clicked = true;
-            bFire.classList.add('on');
-            registerLookTouches(e);
-            e.stopPropagation(); e.preventDefault();
-        }, { passive: false });
-        bFire.addEventListener('touchend', e => {
-            this.mDown = false; this.firing = false;
-            bFire.classList.remove('on');
-            unregisterLookTouches(e);
-            e.stopPropagation(); e.preventDefault();
-        }, { passive: false });
-        bFire.addEventListener('touchcancel', e => {
-            this.mDown = false; this.firing = false;
-            bFire.classList.remove('on');
-            unregisterLookTouches(e);
-            e.stopPropagation(); e.preventDefault();
-        }, { passive: false });
-
-        const bDash = document.getElementById('btn-dash');
-        bDash.addEventListener('touchstart', e => {
-            this.keys['shift'] = true; bDash.classList.add('on');
-            registerLookTouches(e); e.stopPropagation(); e.preventDefault();
-        }, { passive: false });
-        bDash.addEventListener('touchend', e => {
-            this.keys['shift'] = false; bDash.classList.remove('on');
-            unregisterLookTouches(e); e.stopPropagation(); e.preventDefault();
-        }, { passive: false });
-        bDash.addEventListener('touchcancel', e => {
-            this.keys['shift'] = false; bDash.classList.remove('on');
-            unregisterLookTouches(e); e.stopPropagation(); e.preventDefault();
-        }, { passive: false });
-
-        const bRld = document.getElementById('btn-reload');
-        bRld.addEventListener('touchstart', e => {
-            this.onReload?.();
-            bRld.classList.add('on');
-            registerLookTouches(e);
-            setTimeout(() => bRld.classList.remove('on'), 150);
-            e.stopPropagation(); e.preventDefault();
-        }, { passive: false });
-        bRld.addEventListener('touchend', e => { unregisterLookTouches(e); e.stopPropagation(); e.preventDefault(); }, { passive: false });
-        bRld.addEventListener('touchcancel', e => { unregisterLookTouches(e); e.stopPropagation(); e.preventDefault(); }, { passive: false });
-
-        const bWepNext = document.getElementById('btn-wep-next');
-        bWepNext.addEventListener('touchstart', e => {
-            this.onCycleWep?.(1);
-            bWepNext.classList.add('on');
-            setTimeout(() => bWepNext.classList.remove('on'), 120);
-            registerLookTouches(e); e.stopPropagation(); e.preventDefault();
-        }, { passive: false });
-        bWepNext.addEventListener('touchend', e => { unregisterLookTouches(e); e.stopPropagation(); e.preventDefault(); }, { passive: false });
-        bWepNext.addEventListener('touchcancel', e => { unregisterLookTouches(e); e.stopPropagation(); e.preventDefault(); }, { passive: false });
-
-        const bWepPrev = document.getElementById('btn-wep-prev');
-        bWepPrev.addEventListener('touchstart', e => {
-            this.onCycleWep?.(-1);
-            bWepPrev.classList.add('on');
-            setTimeout(() => bWepPrev.classList.remove('on'), 120);
-            registerLookTouches(e); e.stopPropagation(); e.preventDefault();
-        }, { passive: false });
-        bWepPrev.addEventListener('touchend', e => { unregisterLookTouches(e); e.stopPropagation(); e.preventDefault(); }, { passive: false });
-        bWepPrev.addEventListener('touchcancel', e => { unregisterLookTouches(e); e.stopPropagation(); e.preventDefault(); }, { passive: false });
-
-        const bPause = document.getElementById('btn-pause');
-        bPause.addEventListener('touchstart', e => {
-            if (this.state === 'play') this.onPause?.();
-            e.stopPropagation(); e.preventDefault();
-        }, { passive: false });
+        // Buttons: explicit start/end handlers; each one also registers its finger as a look source.
+        const bind = (id, down, up) => {
+            const el = $(id);
+            const stop = e => { e.stopPropagation(); e.preventDefault(); };
+            el.addEventListener('touchstart', e => { down(el); regLook(e); stop(e); }, { passive: false });
+            const end = e => { if (up) up(el); unregLook(e); stop(e); };
+            el.addEventListener('touchend', end, { passive: false });
+            el.addEventListener('touchcancel', end, { passive: false });
+        };
+        const blink = el => { el.classList.add('on'); setTimeout(() => el.classList.remove('on'), 130); };
+        bind('btn-fire', el => { if (this.canPlay()) { this.firing = true; el.classList.add('on'); } },
+            el => { this.firing = false; el.classList.remove('on'); });
+        bind('btn-dash', el => { this.keys['shift'] = true; el.classList.add('on'); },
+            el => { this.keys['shift'] = false; el.classList.remove('on'); });
+        bind('btn-reload', el => { if (this.canPlay()) this.cb.onReload(); blink(el); });
+        bind('btn-wep-next', el => { if (this.canPlay()) this.cb.onCycleWep(1); blink(el); });
+        bind('btn-wep-prev', el => { if (this.canPlay()) this.cb.onCycleWep(-1); blink(el); });
+        bind('btn-pause', () => { if (this.state === 'play') this.cb.onPause(); });
     }
 
-    // Convenience accessors for the game loop
     getMove() {
-        if (this.isMobile) {
-            return { fwd: this.moveFwd, str: this.moveStr };
-        }
-        const fwd = (this.keys['w'] ? 1 : 0) + (this.keys['s'] ? -1 : 0);
-        const str = (this.keys['d'] ? 1 : 0) + (this.keys['a'] ? -1 : 0);
+        if (this.isMobile) return { fwd: this.moveFwd, str: this.moveStr };
+        const k = this.keys;
+        let fwd = (k['w'] || k['arrowup'] ? 1 : 0) - (k['s'] || k['arrowdown'] ? 1 : 0);
+        let str = (k['d'] || k['arrowright'] ? 1 : 0) - (k['a'] || k['arrowleft'] ? 1 : 0);
+        if (fwd && str) { fwd *= 0.7071; str *= 0.7071; }
         return { fwd, str };
     }
 
-    isDashing() {
-        return !!this.keys['shift'];
-    }
+    wantsDash() { return !!this.keys['shift']; }
+    isFiring() { return this.firing; }
 
-    isFiring() {
-        return this.firing;
-    }
-
-    consumeClick() {
-        const c = this.clicked;
-        this.clicked = false;
-        return c;
-    }
-
-    // Decay look deltas each frame (for sway target)
-    tick() {
-        this.lookDx *= 0.7;
-        this.lookDy *= 0.7;
-    }
+    tick() { this.lookDx *= 0.6; this.lookDy *= 0.6; }
 }
