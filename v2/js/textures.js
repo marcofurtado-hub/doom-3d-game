@@ -281,8 +281,8 @@ export let ATLAS = null;
 export async function loadAssets(base) {
     try {
         const atlas = await (await fetch(base + 'atlas.json')).json();
-        const loader = new THREE.TextureLoader(), tiles = ['wall', 'floor', 'lava', 'face'];
-        await Promise.all([...tiles, 'sky', ...Object.keys(atlas)].map(n =>
+        const loader = new THREE.TextureLoader(), tiles = ['wall', 'floor'];
+        await Promise.all(tiles.map(n =>
             loader.loadAsync(base + n + '.png').then(tex => { ASSETS[n] = nearest(tex, true, tiles.includes(n)); })));
         ATLAS = atlas;
     } catch (e) {
