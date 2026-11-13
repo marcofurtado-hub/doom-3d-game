@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { buildSky, buildSurfaceMaterial } from './biomes.js';
+import { lavaTexture, facePanel, pentagramTexture, skyPanorama, flameStrip } from './textures.js';
 
 // Arena: floor, optional ceiling, outer walls, inner maze, lights, sky, embers, glowing props.
 // Fully rebuilt (and disposed) on biome change.
@@ -18,9 +19,9 @@ const MAZE_LAYOUTS = [
 ];
 
 // Box with world-space UVs so the wall texture keeps a constant texel density on any wall size.
-function worldBox(w, h, d) {
+function worldBox(w, h, d, T) {
     const g = new THREE.BoxGeometry(w, h, d);
-    const uv = g.attributes.uv, T = ARENA.TILE;
+    const uv = g.attributes.uv;
     const spans = [[d, h], [d, h], [w, d], [w, d], [w, h], [w, h]];
     for (let f = 0; f < 6; f++) {
         for (let i = 0; i < 4; i++) {
@@ -63,11 +64,24 @@ export class Arena {
         this.scene.fog = new THREE.Fog(biome.fogColor, biome.fogNear, biome.fogFar);
         this.scene.background = new THREE.Color(biome.fogColor);
 
-        this.sky = this._add(buildSky(biome));
+        this.lava = null; this.sprites = []; this.flameTex = null; this.lavaTex = null;
+        const tile = biome.tile || ARENA.TILE, floorTile = biome.tile || ARENA.FLOOR_TILE;
+        if (biome.keep) {
+            // Classic sky: a painted strip on a cylinder instead of a shader dome
+            const tex = skyPanorama();
+            tex.repeat.set(3, 1);
+            const cyl = this._add(new THREE.Mesh(new THREE.CylinderGeometry(95, 95, 60, 24, 1, true),
+                new THREE.MeshBasicMaterial({ map: tex, side: THREE.BackSide, fog: false, depthWrite: false })));
+            cyl.position.y = 22;
+            const cap = this._add(new THREE.Mesh(new THREE.CircleGeometry(96, 16),
+                new THREE.MeshBasicMaterial({ color: 0x1c0206, side: THREE.DoubleSide, fog: false, depthWrite: false })));
+            cap.rotation.x = Math.PI / 2; cap.position.y = 51.9;
+            this.sky = null;
+        } else this.sky = this._add(buildSky(biome));
 
         // Floor
         const floorMat = buildSurfaceMaterial(biome, 'floor', low);
-        const rep = new THREE.Vector2(ARENA.W / ARENA.FLOOR_TILE, ARENA.H / ARENA.FLOOR_TILE);
+        const rep = new THREE.Vector2(ARENA.W / floorTile, ARENA.H / floorTile);
         for (const t of [floorMat.map, floorMat.emissiveMap, floorMat.normalMap]) if (t) t.repeat.copy(rep);
         const floor = this._add(new THREE.Mesh(new THREE.PlaneGeometry(ARENA.W, ARENA.H), floorMat));
         floor.rotation.x = -Math.PI / 2;
@@ -76,7 +90,7 @@ export class Arena {
         // Ceiling only on enclosed biomes; open-sky biomes show the dome
         if (!this.openSky) {
             const ceil = this._add(new THREE.Mesh(new THREE.PlaneGeometry(ARENA.W, ARENA.H),
-                new THREE.MeshStandardMaterial({ color: biome.ceilColor, roughness: 1, metalness: 0 })));
+                new THREE.MeshLambertMaterial({ color: biome.ceilColor })));
             ceil.rotation.x = Math.PI / 2;
             ceil.position.y = ARENA.WALL_H;
         }
@@ -88,7 +102,7 @@ export class Arena {
         const T = ARENA.WALL_T, WH = ARENA.WALL_H;
         const outer = [], inner = [], trim = [];
         const wall = (list, w, d, x, z) => {
-            list.push(worldBox(w, WH, d).translate(x, WH / 2, z));
+            list.push(worldBox(w, WH, d, tile).translate(x, WH / 2, z));
             trim.push(new THREE.BoxGeometry(w + 0.24, 0.28, d + 0.24).translate(x, WH - 0.14, z));
             trim.push(new THREE.BoxGeometry(w + 0.16, 0.3, d + 0.16).translate(x, 0.15, z));
         };
@@ -116,6 +130,7 @@ export class Arena {
                 wall(inner, def.w, def.d, p.x, p.z);
             }
         }
+        if (biome.keep) this._buildKeep(trim);
         const mergeAdd = (list, mat, own) => {
             const g = mergeGeometries(list);
             list.forEach(x => x.dispose());
@@ -125,17 +140,12 @@ export class Arena {
         };
         mergeAdd(outer, wallMat, false);
         this.mazeMesh = inner.length ? mergeAdd(inner, wallMat, false) : null;
-        this.trimMesh = mergeAdd(trim, new THREE.MeshStandardMaterial({ color: biome.trim, roughness: 0.55, metalness: 0.35 }), true);
+        this.trimMesh = mergeAdd(trim, new THREE.MeshLambertMaterial({ color: biome.trim }), true);
 
         // Lights (same count in every biome, so shader programs are reused across swaps)
         const hemi = new THREE.HemisphereLight(biome.hemiSky, biome.hemiGround, biome.hemiIntensity * 0.6);
         const sun = new THREE.DirectionalLight(biome.sunColor, biome.sunIntensity);
         sun.position.set(...biome.sunDir);
-        sun.castShadow = shadows;
-        sun.shadow.mapSize.set(1024, 1024);
-        const sc = sun.shadow.camera;
-        sc.near = 1; sc.far = 70; sc.left = -30; sc.right = 30; sc.top = 24; sc.bottom = -24;
-        sun.shadow.bias = -0.0006; sun.shadow.normalBias = 0.03;
         const rim = new THREE.PointLight(biome.rimColor, biome.rimIntensity * 0.35, 70, 1.6);
         rim.position.set(0, 4.2, 0);
         this.group.add(hemi, sun, rim);
@@ -145,9 +155,60 @@ export class Arena {
         this._buildProps();
     }
 
-    setShadows(on) {
-        if (this.lights.sun) this.lights.sun.castShadow = on;
+    // Wave-1 set dressing: lava moat along the outer walls, wall torches, carved faces, floor sigil.
+    _buildKeep(trim) {
+        const T = ARENA.WALL_T, MW = 2.2;
+        const ox = ARENA.W / 2 - T / 2, oz = ARENA.H / 2 - T / 2;   // inner face of the outer walls
+        const hx = ox - MW, hz = oz - MW;                              // inner edge of the moat
+        this.lava = { hx, hz };
+
+        const strip = (w, d, x, z) => {
+            const g = new THREE.PlaneGeometry(w, d).rotateX(-Math.PI / 2).translate(x, 0.04, z);
+            const uv = g.attributes.uv;
+            for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * w / 2, uv.getY(i) * d / 2);
+            return g;
+        };
+        const strips = [strip(ox * 2, MW, 0, -oz + MW / 2), strip(ox * 2, MW, 0, oz - MW / 2), strip(MW, hz * 2, -ox + MW / 2, 0), strip(MW, hz * 2, ox - MW / 2, 0)];
+        this.lavaTex = lavaTexture();
+        const lava = this._add(new THREE.Mesh(mergeGeometries(strips), new THREE.MeshBasicMaterial({ map: this.lavaTex })));
+        strips.forEach(g => g.dispose());
+        lava.renderOrder = 1;
+        // stone kerb around the moat
+        trim.push(new THREE.BoxGeometry(hx * 2 + 0.3, 0.16, 0.3).translate(0, 0.08, -hz), new THREE.BoxGeometry(hx * 2 + 0.3, 0.16, 0.3).translate(0, 0.08, hz),
+            new THREE.BoxGeometry(0.3, 0.16, hz * 2 + 0.3).translate(-hx, 0.08, 0), new THREE.BoxGeometry(0.3, 0.16, hz * 2 + 0.3).translate(hx, 0.08, 0));
+
+        // Torches and faces alternate along the walls
+        this.flameTex = flameStrip();
+        this.flameTex.repeat.set(0.25, 1);
+        this.flameMat = new THREE.SpriteMaterial({ map: this.flameTex, fog: true });
+        const faces = [];
+        const spot = (x, z, ry, i) => {
+            const nx = Math.sin(ry), nz = Math.cos(ry);   // wall normal, pointing into the arena
+            if (i % 2 === 0) {
+                trim.push(new THREE.BoxGeometry(0.16, 0.16, 0.5).rotateY(ry).translate(x + nx * 0.25, 2.2, z + nz * 0.25));
+                trim.push(new THREE.CylinderGeometry(0.2, 0.1, 0.22, 6).translate(x + nx * 0.5, 2.36, z + nz * 0.5));
+                const s = new THREE.Sprite(this.flameMat);
+                s.scale.set(0.6, 0.9, 1);
+                s.position.set(x + nx * 0.5, 2.9, z + nz * 0.5);
+                this.group.add(s);
+                this.sprites.push(s);
+            } else faces.push(new THREE.PlaneGeometry(2, 2).rotateY(ry).translate(x + nx * 0.03, 2.2, z + nz * 0.03));
+        };
+        let i = 0;
+        for (let x = -ARENA.W / 2 + 4.5; x <= ARENA.W / 2 - 4; x += 4.3) { spot(x, -oz, 0, i); spot(x, oz, Math.PI, i + 1); i++; }
+        i = 1;
+        for (let z = -ARENA.H / 2 + 5; z <= ARENA.H / 2 - 4; z += 4.3) { spot(-ox, z, Math.PI / 2, i); spot(ox, z, -Math.PI / 2, i + 1); i++; }
+        const ft = facePanel();
+        this._add(new THREE.Mesh(mergeGeometries(faces), new THREE.MeshLambertMaterial({ map: ft, emissiveMap: ft, emissive: 0x3a1410 })));
+        faces.forEach(g => g.dispose());
+
+        const sig = this._add(new THREE.Mesh(new THREE.PlaneGeometry(7, 7).rotateX(-Math.PI / 2),
+            new THREE.MeshBasicMaterial({ map: pentagramTexture(), transparent: true, alphaTest: 0.5, depthWrite: false })));
+        sig.position.y = 0.03;
+        sig.renderOrder = 1;
     }
+
+    inLava(x, z) { return !!this.lava && (Math.abs(x) > this.lava.hx + 0.2 || Math.abs(z) > this.lava.hz + 0.2); }
 
     _buildEmbers() {
         const cfg = this.biome.embers;
@@ -237,6 +298,8 @@ export class Arena {
 
     update(dt, t) {
         if (this.sky) this.sky.userData.uniforms.time.value = t;
+        if (this.lavaTex) this.lavaTex.offset.set(Math.floor(t * 6) / 64 % 1, Math.floor(Math.sin(t * 0.5) * 6) / 64); // steps of one texel, like a palette-era scroll
+        if (this.flameTex) this.flameTex.offset.x = (Math.floor(t * 9) % 4) * 0.25;
         const em = this.embers;
         if (em) {
             const rise = this.biome.embers.rise;
@@ -345,6 +408,9 @@ export class Arena {
             this.lights[k].dispose?.();
         }
         this.lights = {};
-        this.sky = null; this.embers = null; this.props = null;
+        for (const s of this.sprites || []) this.group.remove(s);
+        this.sprites = [];
+        if (this.flameMat) { this.flameMat.dispose(); this.flameMat = null; }
+        this.sky = null; this.embers = null; this.props = null; this.lava = null; this.lavaTex = null; this.flameTex = null;
     }
 }

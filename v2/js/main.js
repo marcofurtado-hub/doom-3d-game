@@ -5,8 +5,7 @@ import { biomeForWave } from './biomes.js';
 import { Particles } from './particles.js';
 import { FX } from './fx.js';
 import { Audio } from './audio.js';
-import { WEAP, WC, WeaponView, makeBullet, makeBulletMesh, makeOrbMesh, buildWeaponModel, setWeaponEnvMap } from './weapons.js';
-import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { WEAP, WC, WeaponView, makeBullet, makeBulletMesh, makeOrbMesh, buildWeaponModel } from './weapons.js';
 import { EDEF, BDEF, buildEnemyMesh, disposeEnemyMesh } from './enemies.js';
 import { Player } from './player.js';
 import { Input } from './input.js';
@@ -39,8 +38,9 @@ const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(80, innerWidth / innerHeight, 0.04, 220);
 scene.add(camera);
 
-let perf = localStorage.getItem('doom3dv2Perf') === '1';
-const renderer = new RendererSystem(scene, camera, { isMobile, perf });
+let perf = localStorage.getItem('doom3dv2Hd') === '1'; // here "perf" means the sharper 480-line mode
+const barHeight = () => parseInt(getComputedStyle(document.body).getPropertyValue('--bar')) || 88;
+const renderer = new RendererSystem(scene, camera, { isMobile, hd: perf, barHeight });
 const arena = new Arena(scene);
 const _dbs = new THREE.Vector2();
 const particles = new Particles(scene, isMobile, () => renderer.renderer.getDrawingBufferSize(_dbs).y);
@@ -48,12 +48,6 @@ const audio = new Audio();
 const player = new Player();
 const hud = new HUD();
 const fx = new FX({ camera, renderer });
-// Small prefiltered environment, used only by the gun metals so they read as metal without lighting the whole scene with IBL
-{
-    const pmrem = new THREE.PMREMGenerator(renderer.renderer);
-    setWeaponEnvMap(pmrem.fromScene(new RoomEnvironment(), 0.04).texture);
-    pmrem.dispose();
-}
 const weaponView = new WeaponView(camera);
 weaponView.setWeapon(1);
 boot(60, 'WEAPONS...');
@@ -75,7 +69,7 @@ const MAX_DECALS = isMobile ? 24 : 60;
 const canPlay = () => state === 'play' && !paused && !upgrading;
 const after = (sec, fn) => timers.push({ t: sec, fn });
 const aliveCount = () => { let n = 0; for (const e of enemies) if (e.hp > 0) n++; return n; };
-let sndHit = 0, sndRic = 0, sndSpawn = 0;
+let sndHit = 0, sndRic = 0, sndSpawn = 0, lavaT = 0;
 
 const input = new Input({
     player, isMobile, canPlay,
@@ -121,7 +115,7 @@ function updateLights(dt) {
 
 // ---------------------------------------------------------------- title screen art
 const titleCanvas = $('title-canvas'), tctx = titleCanvas.getContext('2d');
-const sizeTitle = () => { titleCanvas.width = innerWidth; titleCanvas.height = innerHeight; };
+const sizeTitle = () => { titleCanvas.width = Math.ceil(innerWidth / 4); titleCanvas.height = Math.ceil(innerHeight / 4); };
 sizeTitle();
 const titleEmbers = Array.from({ length: 90 }, () => ({
     x: Math.random(), y: Math.random(), vy: 0.02 + Math.random() * 0.09, vx: (Math.random() - 0.5) * 0.02,
@@ -139,7 +133,7 @@ function drawTitle(dt) {
     tctx.translate(W / 2, H * 0.45);
     const R = Math.min(W, H) * 0.42;
     tctx.strokeStyle = `rgba(200,50,20,${0.16 + 0.07 * Math.sin(titleT * 0.7)})`;
-    tctx.lineWidth = 2;
+    tctx.lineWidth = 1;
     tctx.beginPath(); tctx.arc(0, 0, R, 0, Math.PI * 2); tctx.stroke();
     tctx.beginPath(); tctx.arc(0, 0, R * 0.92, 0, Math.PI * 2); tctx.stroke();
     tctx.beginPath();
@@ -158,8 +152,7 @@ function drawTitle(dt) {
         if (e.y < -0.02) { e.y = 1.02; e.x = Math.random(); }
         const x = e.x * W, y = e.y * H;
         tctx.fillStyle = e.c;
-        tctx.globalAlpha = 0.14; tctx.beginPath(); tctx.arc(x, y, e.s * 4, 0, 6.3); tctx.fill();
-        tctx.globalAlpha = 0.85; tctx.beginPath(); tctx.arc(x, y, e.s, 0, 6.3); tctx.fill();
+        tctx.fillRect(Math.round(x), Math.round(y), e.s > 2.2 ? 2 : 1, e.s > 2.2 ? 2 : 1);
     }
     tctx.globalAlpha = 1;
 }
@@ -362,10 +355,9 @@ function togglePause() {
 
 function setPerf(on) {
     perf = on;
-    renderer.setPerfMode(on);
-    arena.setShadows(renderer.shadows);
-    localStorage.setItem('doom3dv2Perf', on ? '1' : '0');
-    $('start-perf').textContent = 'MODO LEVE: ' + (on ? 'ON' : 'OFF');
+    renderer.setHd(on);
+    localStorage.setItem('doom3dv2Hd', on ? '1' : '0');
+    $('start-perf').textContent = 'PIXELS: ' + (on ? '480p' : '240p');
     $('start-perf').classList.toggle('on', on);
     $('opt-perf').classList.toggle('on', on);
 }
@@ -1005,6 +997,12 @@ function updatePlayer(dt) {
     }
     if (player.inv > 0) player.inv -= dt;
     if (player.hurtT > 0) player.hurtT -= dt;
+    lavaT -= dt;
+    if (arena.inLava(player.x, player.z) && player.dashT <= 0 && lavaT <= 0) {
+        lavaT = 0.5;
+        damagePlayer(6, player.x * 2, player.z * 2);
+        particles.fire(player.x, 0.2, player.z);
+    }
     if (player.reloading) {
         player.reloadT -= dt;
         if (player.reloadT <= 0) { player.reloading = false; player.ammo[player.wep] = player.ammoMax[player.wep]; audio.reload(); }
@@ -1032,7 +1030,7 @@ $('go-input').addEventListener('keydown', e => { e.stopPropagation(); if (e.key 
 $('pause-controls').innerHTML = isMobile
     ? 'Esquerda: joystick · Direita: arrasta pra olhar<br>FIRE / DASH / ↻ recarregar / ◀ ▶ armas'
     : '<span class="hl">WASD</span> mover · <span class="hl">MOUSE</span> olhar · <span class="hl">CLICK</span> atirar<br><span class="hl">1-9</span> / <span class="hl">Q E</span> / <span class="hl">SCROLL</span> armas · <span class="hl">SHIFT</span> dash · <span class="hl">R</span> recarregar';
-$('start-perf').textContent = 'MODO LEVE: ' + (perf ? 'ON' : 'OFF');
+$('start-perf').textContent = 'PIXELS: ' + (perf ? '480p' : '240p');
 $('start-perf').classList.toggle('on', perf);
 $('opt-perf').classList.toggle('on', perf);
 
@@ -1041,7 +1039,7 @@ addEventListener('orientationchange', () => setTimeout(() => { renderer.onResize
 document.addEventListener('visibilitychange', () => { if (document.hidden && canPlay()) togglePause(); });
 
 // ---------------------------------------------------------------- main loop
-let last = performance.now(), fpsEma = 60, slowFor = 0, autoPerfDone = perf;
+let last = performance.now(), fpsEma = 60, slowFor = 0, autoPerfDone = true;
 boot(100, 'READY');
 setTimeout(() => { $('boot').style.display = 'none'; }, 250);
 

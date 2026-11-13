@@ -76,7 +76,7 @@ class Pool {
 // Soft round sprites sized in world units. Same pool API as Pool.
 class PointPool {
     constructor(scene, size, gravity, additive, getHeight) {
-        this.size = size; this.gravity = gravity; this.getHeight = getHeight; this.cursor = 0;
+        this.size = size; this.gravity = gravity; this.getHeight = getHeight; this.cursor = 0; this.additive = additive;
         this.data = Array.from({ length: size }, () => ({ alive: false, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, life: 0, maxLife: 1, s0: 1, s1: 0, r: 1, g: 1, b: 1 }));
         const geo = new THREE.BufferGeometry();
         this.pos = new THREE.BufferAttribute(new Float32Array(size * 3), 3).setUsage(THREE.DynamicDrawUsage);
@@ -84,25 +84,26 @@ class PointPool {
         this.misc = new THREE.BufferAttribute(new Float32Array(size * 2), 2).setUsage(THREE.DynamicDrawUsage); // size, alpha
         geo.setAttribute('position', this.pos); geo.setAttribute('color', this.col); geo.setAttribute('misc', this.misc);
         geo.setDrawRange(0, 0);
-        this.uniforms = { uH: { value: 720 }, uOpacity: { value: additive ? 1 : 0.4 } };
+        this.uniforms = { uH: { value: 720 }, uOpacity: { value: additive ? 1.6 : 0.75 } };
         const mat = new THREE.ShaderMaterial({
-            uniforms: this.uniforms, transparent: true, depthWrite: false,
-            blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending,
+            uniforms: this.uniforms, transparent: false, depthWrite: true,
             vertexShader: /* glsl */`
                 attribute vec3 color; attribute vec2 misc;
                 uniform float uH; varying vec3 vC; varying float vA;
                 void main(){
                     vec4 mv = modelViewMatrix * vec4(position, 1.0);
                     gl_Position = projectionMatrix * mv;
-                    gl_PointSize = min(misc.x * uH * 0.5 * projectionMatrix[1][1] / max(0.05, -mv.z), uH * 0.6);
+                    gl_PointSize = min(misc.x * uH * 0.5 * projectionMatrix[1][1] / max(0.05, -mv.z), uH * 0.14);
                     vC = color; vA = misc.y;
                 }`,
             fragmentShader: /* glsl */`
                 uniform float uOpacity; varying vec3 vC; varying float vA;
                 void main(){
-                    float d = length(gl_PointCoord - 0.5) * 2.0;
-                    float a = ${additive ? 'pow(max(0.0, 1.0 - d), 1.6)' : 'smoothstep(1.0, 0.25, d)'} * vA * uOpacity;
-                    gl_FragColor = vec4(vC, a);
+                    // square sprites; transparency is a 2x2 stipple pattern, the way pre-blending hardware faked it
+                    vec2 q = floor(mod(gl_FragCoord.xy, 2.0));
+                    float th = (q.x + q.y * 2.0 == 0.0 ? 0.125 : q.x + q.y * 2.0 == 3.0 ? 0.375 : q.x + q.y * 2.0 == 1.0 ? 0.625 : 0.875);
+                    if (vA * uOpacity < th) discard;
+                    gl_FragColor = vec4(vC, 1.0);
                 }`,
         });
         this.mesh = new THREE.Points(geo, mat);
@@ -121,7 +122,8 @@ class PointPool {
         d.alive = true; d.x = x; d.y = y; d.z = z; d.vx = vx; d.vy = vy; d.vz = vz;
         d.life = 0; d.maxLife = life; d.s0 = s0; d.s1 = s1;
         _c.set(color);
-        d.r = _c.r * boost; d.g = _c.g * boost; d.b = _c.b * boost;
+        const k = Math.min(boost, 1.2); // no bloom to feed any more
+        d.r = _c.r * k; d.g = _c.g * k; d.b = _c.b * k;
     }
 
     update(dt) {
@@ -138,7 +140,7 @@ class PointPool {
             const t = d.life / d.maxLife;
             P[n * 3] = d.x; P[n * 3 + 1] = d.y; P[n * 3 + 2] = d.z;
             C[n * 3] = d.r; C[n * 3 + 1] = d.g; C[n * 3 + 2] = d.b;
-            M[n * 2] = (d.s0 + (d.s1 - d.s0) * t) * 2.6;
+            M[n * 2] = (d.s0 + (d.s1 - d.s0) * t) * (this.additive ? 1.5 : 1.3);
             M[n * 2 + 1] = Math.min(1, (1 - t) * 3) * Math.min(1, t * 12 + 0.3);
             n++;
         }
@@ -164,8 +166,8 @@ export class Particles {
 
         // Flash spheres + ground rings
         this.flashes = [];
-        const fGeo = new THREE.SphereGeometry(1, 20, 14);
-        const rGeo = new THREE.RingGeometry(0.82, 1, 40);
+        const fGeo = new THREE.IcosahedronGeometry(1, 1);
+        const rGeo = new THREE.RingGeometry(0.8, 1, 16);
         rGeo.rotateX(-Math.PI / 2);
         for (let i = 0; i < 14; i++) {
             const ring = i >= 8;
@@ -241,8 +243,8 @@ export class Particles {
                 0.4 + Math.random() * 0.5, 0.14, 0.02, i % 3 ? color : 0xffffff, 2.5);
         }
         this.smokePuff(x, y + 0.3, z, 12, 0x3a3532, 0.6 + radius / 5);
-        this.flash(x, y, z, color, radius * 0.55, 0.28);
-        this.flash(x, y, z, 0xffffff, radius * 0.25, 0.12);
+        this.flash(x, y, z, color, radius * 0.45, 0.22);
+        this.flash(x, y, z, 0xffe080, radius * 0.25, 0.12);
         this.ring(x, z, color, radius, 0.4);
     }
 
@@ -257,7 +259,7 @@ export class Particles {
             if (!best || f.t / f.dur > best.t / best.dur) best = f;
         }
         best.t = 0; best.dur = dur; best.r = r;
-        best.base.set(color).multiplyScalar(ring ? 1.6 : 1.3);
+        best.base.set(color);
         best.m.position.set(x, y, z);
         best.m.visible = true;
     }

@@ -1,108 +1,87 @@
 import * as THREE from 'three';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
-import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
-import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 
-// One combined pass: chromatic aberration, dash radial blur, vignette (biome tinted), hurt tint, grain.
-const PostFXShader = {
+// Retro pipeline: the scene is rendered into a small buffer (about 240 lines) and stretched with
+// nearest-neighbour, so every pixel is a chunky square. One post pass does the classic tricks:
+// palette quantisation with ordered (Bayer) dithering and the red "pain" palette shift.
+// No bloom, no antialiasing, no shadow maps.
+const RetroShader = {
     uniforms: {
         tDiffuse: { value: null },
         uTime: { value: 0 },
-        uAberration: { value: 0.0012 },
-        uVignette: { value: 1.0 },
-        uGrain: { value: 0.05 },
+        uLevels: { value: 28 },
         uHurt: { value: 0 },
         uDash: { value: 0 },
-        uAccent: { value: new THREE.Vector3(1, 0.4, 0.15) },
+        uTint: { value: new THREE.Vector3(1, 1, 1) },
     },
     vertexShader: /* glsl */`
         varying vec2 vUv;
         void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
     fragmentShader: /* glsl */`
         uniform sampler2D tDiffuse;
-        uniform float uTime, uAberration, uVignette, uGrain, uHurt, uDash;
-        uniform vec3 uAccent;
+        uniform float uLevels, uHurt, uDash;
+        uniform vec3 uTint;
         varying vec2 vUv;
-        float hash(vec2 p){ return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+        float bayer(vec2 p) {
+            vec2 a = floor(mod(p, 4.0));
+            float i = a.x + a.y * 4.0;
+            // 4x4 Bayer matrix, values 0..15
+            float v = 0.0;
+            if (i < 0.5) v = 0.0; else if (i < 1.5) v = 8.0; else if (i < 2.5) v = 2.0; else if (i < 3.5) v = 10.0;
+            else if (i < 4.5) v = 12.0; else if (i < 5.5) v = 4.0; else if (i < 6.5) v = 14.0; else if (i < 7.5) v = 6.0;
+            else if (i < 8.5) v = 3.0; else if (i < 9.5) v = 11.0; else if (i < 10.5) v = 1.0; else if (i < 11.5) v = 9.0;
+            else if (i < 12.5) v = 15.0; else if (i < 13.5) v = 7.0; else if (i < 14.5) v = 13.0; else v = 5.0;
+            return (v + 0.5) / 16.0;
+        }
         void main(){
-            vec2 c = vUv - 0.5;
-            float dist = length(c);
-            float ab = uAberration * (0.4 + dist * 2.5) * (1.0 + uHurt * 5.0 + uDash * 4.0);
-            vec3 col;
-            col.r = texture2D(tDiffuse, vUv + c * ab).r;
-            col.g = texture2D(tDiffuse, vUv).g;
-            col.b = texture2D(tDiffuse, vUv - c * ab).b;
-            if (uDash > 0.01) {
-                vec3 acc = vec3(0.0);
-                for (int i = 1; i <= 6; i++) acc += texture2D(tDiffuse, vUv - c * uDash * 0.035 * float(i)).rgb;
-                col = mix(col, acc / 6.0, min(1.0, uDash * 1.2) * smoothstep(0.05, 0.5, dist));
-            }
-            float edge = smoothstep(0.35, 0.85, dist) * uVignette;
-            col *= 1.0 - edge * 0.55;
-            col += uAccent * edge * 0.035;
-            col = mix(col, vec3(0.9, 0.03, 0.0) * (0.3 + dot(col, vec3(0.33))), uHurt * (0.25 + edge * 0.6));
-            // Grain scaled by luminance so dark areas stay clean after the sRGB transfer
-            float lum = dot(col, vec3(0.299, 0.587, 0.114));
-            col += (hash(vUv * 913.0 + uTime) - 0.5) * uGrain * (0.02 + lum);
-            gl_FragColor = vec4(max(col, 0.0), 1.0);
+            vec2 uv = vUv;
+            // dash: squeeze the image toward the centre for a few frames (cheap speed feel, no blur)
+            uv = (uv - 0.5) * (1.0 - uDash * 0.06) + 0.5;
+            vec3 col = texture2D(tDiffuse, uv).rgb;
+            col = mix(col, vec3(dot(col, vec3(0.5, 0.3, 0.2)) + 0.25, 0.0, 0.0), uHurt * 0.55);
+            col *= uTint;
+            col = floor(col * uLevels + bayer(gl_FragCoord.xy)) / uLevels;
+            gl_FragColor = vec4(col, 1.0);
         }`,
 };
 
 export class RendererSystem {
-    constructor(scene, camera, { isMobile = false, perf = false } = {}) {
+    // barHeight(): pixels of the status bar at the bottom that the 3D view must not cover
+    constructor(scene, camera, { isMobile = false, hd = false, barHeight = () => 0 } = {}) {
         this.isMobile = isMobile;
         this.scene = scene;
         this.camera = camera;
-        this.perf = false;
+        this.hd = hd;
+        this.barHeight = barHeight;
 
         this.renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance', alpha: false, stencil: false });
-        this.basePixelRatio = isMobile ? 1 : Math.min(devicePixelRatio, 1.5);
-        this.renderer.setPixelRatio(this.basePixelRatio);
-        this.renderer.setSize(innerWidth, innerHeight);
+        this.renderer.setPixelRatio(1);
         this.renderer.outputColorSpace = THREE.SRGBColorSpace;
-        this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-        this.renderer.toneMappingExposure = 1.15;
-        this.renderer.shadowMap.enabled = !isMobile;
-        this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-        document.body.prepend(this.renderer.domElement);
+        this.renderer.toneMapping = THREE.NoToneMapping;
+        this.renderer.shadowMap.enabled = false;
+        const c = this.renderer.domElement;
+        c.id = 'view';
+        document.body.prepend(c);
 
         const composer = new EffectComposer(this.renderer);
         composer.addPass(new RenderPass(scene, camera));
-        this.bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), isMobile ? 0.55 : 0.7, 0.55, 0.85);
-        composer.addPass(this.bloom);
-        this.postFX = new ShaderPass(PostFXShader);
-        composer.addPass(this.postFX);
         composer.addPass(new OutputPass());
-        if (!isMobile) {
-            this.smaa = new SMAAPass(innerWidth * this.basePixelRatio, innerHeight * this.basePixelRatio);
-            composer.addPass(this.smaa);
-        }
+        this.retro = new ShaderPass(RetroShader);
+        composer.addPass(this.retro);
         this.composer = composer;
-        this.fx = this.postFX.uniforms;
-        if (perf) this.setPerfMode(true);
-    }
-
-    setAccent(color) {
-        const c = new THREE.Color(color);
-        this.fx.uAccent.value.set(c.r, c.g, c.b);
-    }
-
-    // Perf mode: no bloom, no SMAA, no shadows, lower internal resolution.
-    setPerfMode(on) {
-        this.perf = on;
-        this.bloom.enabled = !on;
-        if (this.smaa) this.smaa.enabled = !on;
-        this.fx.uGrain.value = on ? 0 : 0.05;
-        const pr = on ? Math.min(this.basePixelRatio, 1) * (this.isMobile ? 0.75 : 1) : this.basePixelRatio;
-        this.renderer.setPixelRatio(pr);
-        this.composer.setPixelRatio(pr);
+        this.fx = this.retro.uniforms;
         this.onResize();
     }
 
-    get shadows() { return !this.isMobile && !this.perf; }
+    setAccent() {}
+
+    // "HD" just doubles the line count; the look stays pixelated.
+    setHd(on) { this.hd = on; this.onResize(); }
+
+    get shadows() { return false; }
 
     render(dt) {
         this.fx.uTime.value = (this.fx.uTime.value + dt) % 100;
@@ -110,9 +89,16 @@ export class RendererSystem {
     }
 
     onResize() {
-        this.renderer.setSize(innerWidth, innerHeight);
-        this.composer.setSize(innerWidth, innerHeight);
-        this.camera.aspect = innerWidth / innerHeight;
+        const vw = innerWidth, vh = Math.max(120, innerHeight - this.barHeight());
+        const lines = this.hd ? 480 : 240;
+        const scale = Math.max(1, Math.round(vh / lines));
+        const bw = Math.ceil(vw / scale), bh = Math.ceil(vh / scale);
+        this.renderer.setSize(bw, bh, false);
+        this.composer.setSize(bw, bh);
+        const c = this.renderer.domElement;
+        c.style.width = vw + 'px';
+        c.style.height = vh + 'px';
+        this.camera.aspect = vw / vh;
         this.camera.updateProjectionMatrix();
     }
 }

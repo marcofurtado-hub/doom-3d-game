@@ -229,6 +229,8 @@ const TEMPLATES = {
     },
 };
 
+const _shadowGeo = new THREE.CircleGeometry(1.0, 10).rotateX(-Math.PI / 2);
+const _shadowMat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.45, depthWrite: false });
 const _templates = new Map();
 function template(key) {
     if (!_templates.has(key)) {
@@ -243,10 +245,10 @@ export function buildEnemyMesh(def, isBoss = false) {
     const t = template(def.build);
     const col = new THREE.Color(def.col);
     const mats = {
-        body: new THREE.MeshStandardMaterial({ color: col, emissive: col, emissiveIntensity: isBoss ? 0.3 : 0.14, roughness: 0.72, metalness: 0.05, flatShading: true }),
-        trim: new THREE.MeshStandardMaterial({ color: 0x1c1618, emissive: 0x000000, emissiveIntensity: 1, roughness: 0.5, metalness: 0.5, flatShading: true }),
-        bone: new THREE.MeshStandardMaterial({ color: 0xd8ceb4, emissive: 0x30281c, emissiveIntensity: 0.3, roughness: 0.8, metalness: 0, flatShading: true }),
-        glow: new THREE.MeshStandardMaterial({ color: 0x000000, emissive: def.eye, emissiveIntensity: 2.2, roughness: 1, flatShading: true }),
+        body: new THREE.MeshLambertMaterial({ color: col, emissive: col, emissiveIntensity: isBoss ? 0.22 : 0.1, flatShading: true }),
+        trim: new THREE.MeshLambertMaterial({ color: 0x3a3034, emissive: 0x000000, emissiveIntensity: 1, flatShading: true }),
+        bone: new THREE.MeshLambertMaterial({ color: 0xd8ceb4, emissive: 0x30281c, emissiveIntensity: 0.3, flatShading: true }),
+        glow: new THREE.MeshLambertMaterial({ color: 0x000000, emissive: def.eye, emissiveIntensity: 1, flatShading: true }),
     };
     const g = new THREE.Group();
     const add = (geo, mat, at) => {
@@ -265,6 +267,12 @@ export function buildEnemyMesh(def, isBoss = false) {
     g.userData.eyeMat = mats.glow;
     g.userData.mats = Object.values(mats);
     g.userData.flash = g.userData.mats.map(m => ({ m, hex: m.emissive.getHex(), i: m.emissiveIntensity }));
+    if (!def.flying) { // old-school blob shadow instead of shadow maps
+        const sh = new THREE.Mesh(_shadowGeo, _shadowMat);
+        sh.position.y = 0.03 / def.r;
+        sh.renderOrder = 2;
+        g.add(sh);
+    }
     g.scale.setScalar(def.r * (isBoss ? 1.15 : 1));
     return g;
 }
