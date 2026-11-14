@@ -474,77 +474,22 @@ mkWall(WALL_T,WALL_H,AH, AW/2,WALL_H/2,0);   // east
 
 // Inner maze walls (symmetric layouts)
 let innerWalls=[], innerWallMeshes=[];
-const MAZE_LAYOUTS=[
-    // Layout 0: Open L-shapes - walls don't connect to form boxes
-    [
-        {x:7,z:0,w:1,d:6},   // vertical near center
-        {x:14,z:5,w:6,d:1},  // horizontal arm top-right
-        {x:14,z:-5,w:6,d:1}, // horizontal arm bottom-right (explicit, not mirrored z)
-        {x:0,z:9,w:8,d:1},   // horizontal bar top center
-        {x:20,z:0,w:1,d:5},  // vertical far right
-    ],
-    // Layout 1: Staggered corridors - open ends
-    [
-        {x:5,z:4,w:1,d:5},   // short vert left
-        {x:12,z:0,w:1,d:7},  // tall vert mid
-        {x:9,z:8,w:5,d:1},   // horizontal top
-        {x:19,z:5,w:1,d:5},  // vert far
-        {x:0,z:12,w:5,d:1},  // horizontal top-center
-    ],
-    // Layout 2: Scattered barriers
-    [
-        {x:6,z:0,w:6,d:1},   // horizontal center-left
-        {x:15,z:0,w:1,d:4},  // short vert right
-        {x:10,z:6,w:1,d:5},  // vert mid-top
-        {x:0,z:10,w:5,d:1},  // horizontal bar far top
-        {x:20,z:8,w:4,d:1},  // horizontal corner
-    ],
-    // Layout 3: Wide corridors with pillars
-    [
-        {x:0,z:5,w:8,d:1},   // wide horizontal top
-        {x:8,z:0,w:1,d:4},   // short vert
-        {x:16,z:3,w:1,d:7},  // tall vert right
-        {x:10,z:10,w:6,d:1}, // horizontal far top
-        {x:21,z:0,w:2,d:2},  // pillar far corner
-    ],
-    // Layout 4: Diagonal pillars — pure isolated pillars, no walls trap anyone
-    [
-        {x:6,z:4,w:2,d:2},
-        {x:12,z:-3,w:2,d:2},
-        {x:18,z:5,w:2,d:2},
-        {x:9,z:10,w:2,d:2},
-        {x:20,z:-6,w:2,d:2},
-    ],
-    // Layout 5: Zigzag open alleys — parallel walls with big gaps
-    [
-        {x:6,z:0,w:1,d:8},
-        {x:14,z:4,w:1,d:8},
-        {x:0,z:11,w:10,d:1},
-        {x:22,z:0,w:1,d:6},
-    ],
-    // Layout 6: Cross fields with small blockers
-    [
-        {x:8,z:3,w:1,d:3},
-        {x:8,z:-3,w:1,d:3},
-        {x:15,z:0,w:3,d:1},
-        {x:0,z:10,w:4,d:1},
-        {x:19,z:6,w:1,d:3},
-    ],
-    // Layout 7: Corner posts only — arena feels open with long sightlines
-    [
-        {x:10,z:8,w:2,d:2},
-        {x:18,z:-4,w:2,d:2},
-        {x:5,z:-10,w:2,d:2},
-        {x:20,z:10,w:2,d:2},
-    ],
+const MAZE_LAYOUTS=[ // [v2] one per wave, in rotation (mirrored 4 ways by genMaze3D)
+    [{x:7,z:0,w:1,d:6},{x:18,z:-4,w:2,d:2},{x:5,z:-10,w:2,d:2},{x:20,z:10,w:2,d:2}],            // v1 original
+    [{x:8,z:6,w:2,d:2},{x:16,z:6,w:2,d:2},{x:8,z:12,w:2,d:2},{x:16,z:0,w:2,d:2},{x:0,z:8,w:2,d:2}], // pillar hall
+    [{x:6,z:0,w:6,d:1},{x:15,z:0,w:1,d:4},{x:10,z:7,w:1,d:5},{x:0,z:11,w:5,d:1},{x:20,z:9,w:4,d:1}], // scattered barriers
+    [{x:10,z:0,w:1,d:8},{x:0,z:9,w:10,d:1},{x:18,z:4,w:1,d:6},{x:5,z:5,w:2,d:2}],                   // cross
+    [{x:5,z:4,w:1,d:5},{x:12,z:0,w:1,d:7},{x:9,z:9,w:5,d:1},{x:19,z:5,w:1,d:5},{x:0,z:13,w:5,d:1}], // staggered corridors
+    [{x:0,z:5,w:8,d:1},{x:8,z:0,w:1,d:4},{x:16,z:3,w:1,d:7},{x:10,z:11,w:6,d:1},{x:21,z:0,w:2,d:2}], // long walls
+    [{x:4,z:4,w:1,d:4},{x:9,z:0,w:4,d:1},{x:13,z:5,w:1,d:5},{x:18,z:2,w:4,d:1},{x:20,z:10,w:3,d:1}], // dense maze
 ];
 // One shared Lambert material for all inner walls
 
 const innerWallMat=new THREE.MeshLambertMaterial({map:innerWallTex,color:0xffffff,emissive:0x1a0808});
-function genMaze3D(){
-    innerWallMeshes.forEach(m=>scene.remove(m));
+function genMaze3D(idx){
+    innerWallMeshes.forEach(m=>{scene.remove(m);m.geometry.dispose();});
     innerWallMeshes=[];innerWalls=[];
-    const layout=MAZE_LAYOUTS[Math.floor(Math.random()*MAZE_LAYOUTS.length)];
+    const layout=MAZE_LAYOUTS[(typeof idx==='number'?idx:Math.floor(Math.random()*MAZE_LAYOUTS.length))%MAZE_LAYOUTS.length];
     for(const def of layout){
         const positions=[];
         positions.push({x:def.x,z:def.z});
@@ -595,7 +540,7 @@ function applyTheme(i){
     hemiLight.color.setHex(th.sky);hemiLight.groundColor.setHex(th.ground);hemiLight.intensity=th.hemi;
 }
 applyTheme(0);
-if(new URLSearchParams(location.search).has('debug'))window.__theme=applyTheme;
+if(new URLSearchParams(location.search).has('debug')){window.__theme=applyTheme;window.__maze=i=>genMaze3D(i);window.__wep=i=>{unlockedWeapons[i]=true;pl.wep=i;};window.__god=()=>{pl.maxHp=pl.hp=1e6;};}
 
 // Collision with inner walls (circle vs AABB)
 function colInnerWalls(e){
@@ -1274,100 +1219,100 @@ flashMesh.renderOrder=999;
 flashMesh.userData.persistent=true; // survive buildFPWeapon child-clear
 fpGun.add(flashMesh);
 let flashT=0,flashSize=0.35;
-function _fpPart(w,h,d,color,px,py,pz,emissive=0){
-    const m=mkBoxMesh(w,h,d,color,emissive);
-    m.position.set(px,py,pz);
-    m.castShadow=false;m.receiveShadow=false;
-    fpGun.add(m);return m;
-}
-function buildFPWeapon(id){
-    // Dispose old children, but preserve persistent meshes (like flashMesh)
-    const keep=[];
-    while(fpGun.children.length>0){
-        const c=fpGun.children[0];fpGun.remove(c);
-        if(c.userData.persistent){keep.push(c);continue;}
-        if(c.geometry)c.geometry.dispose();
-        if(c.material)c.material.dispose();
-    }
-    for(const k of keep)fpGun.add(k); // re-attach after clean
-    const X=0.26,Y=-0.22;
-    if(id===1){ // PISTOL - small handgun
-        _fpPart(0.08,0.08,0.35,0x555555,X,Y,-0.52,0x111111);
-        _fpPart(0.1,0.2,0.13,0x2a2a2a,X,Y-0.16,-0.32);
-        _fpPart(0.07,0.05,0.04,0x222222,X,Y+0.06,-0.58);
-        _fpPart(0.04,0.05,0.04,0xe8c020,X,Y+0.08,-0.65,0xe8c020);
-    }else if(id===2){ // SHOTGUN - wood stock, double barrel
-        _fpPart(0.13,0.1,0.6,0x5a3a20,X,Y,-0.45,0x201008);
-        _fpPart(0.08,0.08,0.62,0x222222,X,Y+0.08,-0.45);
-        _fpPart(0.11,0.08,0.2,0x7a5020,X,Y-0.07,-0.55); // pump
-        _fpPart(0.13,0.16,0.2,0x5a3a20,X,Y-0.04,-0.18); // stock
-        _fpPart(0.04,0.04,0.03,0xe8c020,X,Y+0.14,-0.7,0xe8c020);
-    }else if(id===3){ // CHAINGUN - rotary barrels (in spin sub-group)
-        _fpPart(0.16,0.16,0.3,0x444444,X,Y,-0.4,0x111111);
-        const spin=new THREE.Group();
-        spin.position.set(X,Y,-0.58); // pivot at barrel cluster center
-        for(let i=0;i<6;i++){
-            const a=(Math.PI*2/6)*i;
-            const bar=mkBoxMesh(0.035,0.035,0.48,0x2a2a2a);
-            bar.castShadow=false;bar.receiveShadow=false;
-            bar.position.set(Math.cos(a)*0.07,Math.sin(a)*0.07,0);
-            spin.add(bar);
+// ===== [v2] VOXEL WEAPONS =====
+// Each gun is a list of axis-aligned boxes merged into ONE lit mesh (vertex colours) plus ONE unlit
+// mesh for glowing bits. Built once per weapon and cached: switching guns allocates nothing and a gun
+// costs 2 draw calls (3 for the chaingun) instead of one mesh + material per box.
+const _fpBodyMat=new THREE.MeshLambertMaterial({vertexColors:true});
+const _fpGlowMat=new THREE.MeshBasicMaterial({vertexColors:true});
+const _fpCol=new THREE.Color();
+function _voxMesh(parts,mat,ox=0,oy=0,oz=0){
+    const pos=[],nor=[],col=[],idx=[];
+    for(const [w,h,d,c,x,y,z] of parts){
+        const g=new THREE.BoxGeometry(w,h,d),p=g.attributes.position,n=g.attributes.normal,base=pos.length/3;
+        _fpCol.setHex(c);
+        for(let i=0;i<p.count;i++){
+            pos.push(p.getX(i)+x+ox,p.getY(i)+y+oy,p.getZ(i)+z+oz);
+            nor.push(n.getX(i),n.getY(i),n.getZ(i));
+            col.push(_fpCol.r,_fpCol.g,_fpCol.b);
         }
-        const ring=mkBoxMesh(0.17,0.04,0.05,0x333333);
-        ring.castShadow=false;ring.receiveShadow=false;
-        ring.position.set(0,0,-0.24);
-        spin.add(ring);
-        spin.userData.isSpin=true;
-        fpGun.add(spin);
-        _fpPart(0.16,0.1,0.1,0x222222,X,Y-0.13,-0.3); // ammo feed
-        _fpPart(0.11,0.18,0.14,0x222222,X,Y-0.18,-0.18); // grip
-    }else if(id===4){ // ROCKET LAUNCHER - big green tube with red warhead
-        _fpPart(0.18,0.18,0.55,0x3a4a1a,X,Y,-0.5,0x0a1408);
-        _fpPart(0.15,0.03,0.1,0x2a2a2a,X,Y+0.11,-0.5); // top sight rail
-        _fpPart(0.05,0.07,0.04,0xe8c020,X,Y+0.17,-0.55,0xe8c020);
-        _fpPart(0.15,0.15,0.1,0xe03818,X,Y,-0.82,0x601010); // rocket nose
-        _fpPart(0.11,0.16,0.14,0x222222,X,Y-0.16,-0.3);
-    }else if(id===5){ // PURPLE LASER - sleek beam rifle, violet glow
-        _fpPart(0.09,0.09,0.58,0x1a0a2a,X,Y,-0.52,0x2a0a4a);
-        _fpPart(0.12,0.12,0.08,0xb040ff,X,Y,-0.84,0xb040ff); // emitter
-        _fpPart(0.08,0.08,0.04,0xe0a0ff,X,Y,-0.9,0xe0a0ff); // inner core
-        _fpPart(0.04,0.11,0.2,0x6020a0,X+0.09,Y,-0.48,0x3a0a6a); // right fin
-        _fpPart(0.04,0.11,0.2,0x6020a0,X-0.09,Y,-0.48,0x3a0a6a); // left fin
-        _fpPart(0.13,0.03,0.22,0x2a1240,X,Y+0.07,-0.5); // top rail
-        _fpPart(0.04,0.05,0.04,0xff60ff,X,Y+0.11,-0.56,0xff60ff); // violet sight
-        _fpPart(0.11,0.17,0.14,0x140820,X,Y-0.16,-0.3); // grip
-    }else if(id===6){ // DOUBLE SHOTGUN - two wooden barrels side by side
-        _fpPart(0.13,0.1,0.58,0x5a3a20,X,Y,-0.46,0x201008); // right barrel wood
-        _fpPart(0.08,0.08,0.62,0x1a1a1a,X+0.06,Y+0.03,-0.45); // right barrel metal
-        _fpPart(0.08,0.08,0.62,0x1a1a1a,X-0.06,Y+0.03,-0.45); // left barrel metal
-        _fpPart(0.05,0.06,0.12,0x2a2a2a,X,Y+0.03,-0.76); // muzzle gap
-        _fpPart(0.12,0.08,0.2,0x7a5020,X,Y-0.07,-0.52); // lever
-        _fpPart(0.15,0.18,0.22,0x5a3a20,X,Y-0.04,-0.2); // wooden stock
-        _fpPart(0.04,0.04,0.03,0xff8030,X,Y+0.12,-0.7,0xff8030); // orange sight
-    }else if(id===7){ // FLAMETHROWER - nozzle + fuel tank, flame at tip
-        _fpPart(0.12,0.12,0.42,0x2a2a2a,X,Y,-0.48,0x080808); // main tube
-        _fpPart(0.17,0.17,0.08,0x3a3a3a,X,Y,-0.74); // nozzle cap
-        _fpPart(0.2,0.2,0.04,0x222222,X,Y,-0.8); // nozzle front
-        _fpPart(0.15,0.12,0.08,0xff8020,X,Y,-0.84,0xff8020); // flame source
-        _fpPart(0.1,0.08,0.05,0xffcc40,X,Y,-0.89,0xffcc40); // inner flame
-        _fpPart(0.16,0.26,0.2,0x4a4a4a,X-0.15,Y+0.04,-0.35); // fuel tank attached
-        _fpPart(0.05,0.05,0.22,0x1a1a1a,X-0.12,Y,-0.55); // fuel hose
-        _fpPart(0.11,0.16,0.14,0x222222,X,Y-0.16,-0.22); // grip
-    }else if(id===8){ // LASER RIFLE - sleek with red emitter
-        _fpPart(0.07,0.07,0.55,0x888888,X,Y,-0.5);
-        _fpPart(0.06,0.06,0.06,0xff2020,X,Y,-0.81,0xff2020); // red emitter
-        _fpPart(0.15,0.04,0.2,0x5a5a5a,X,Y+0.055,-0.5); // top rail
-        _fpPart(0.04,0.04,0.04,0xff2020,X,Y+0.1,-0.6,0xff2020); // red sight
-        _fpPart(0.1,0.04,0.12,0x5a5a5a,X,Y-0.055,-0.5); // bottom rail
-        _fpPart(0.1,0.16,0.14,0x2a2a2a,X,Y-0.15,-0.3);
-    }else if(id===9){ // MEGA BOMB - huge launcher with big orange warhead
-        _fpPart(0.22,0.22,0.55,0x222222,X,Y,-0.5,0x080808);
-        _fpPart(0.24,0.04,0.5,0x3a3a3a,X,Y+0.13,-0.5); // top ridge
-        _fpPart(0.18,0.18,0.15,0xff4400,X,Y,-0.85,0xff4400); // warhead
-        _fpPart(0.14,0.14,0.03,0xffaa00,X,Y,-0.94,0xffaa00); // glow tip
-        _fpPart(0.05,0.07,0.04,0xe8c020,X,Y+0.18,-0.55,0xe8c020);
-        _fpPart(0.13,0.2,0.16,0x1a1a1a,X,Y-0.19,-0.28);
+        for(let i=0;i<g.index.count;i++)idx.push(g.index.getX(i)+base);
+        g.dispose();
     }
+    const geo=new THREE.BufferGeometry();
+    geo.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
+    geo.setAttribute('normal',new THREE.Float32BufferAttribute(nor,3));
+    geo.setAttribute('color',new THREE.Float32BufferAttribute(col,3));
+    geo.setIndex(idx);
+    return new THREE.Mesh(geo,mat);
+}
+// palette
+const C_ST=0x6a6e78,C_ST2=0x50545c,C_ST3=0x8a8e96,C_DK=0x2e3036,C_BK=0x1a1b1e,C_WD=0x7a4a26,C_WD2=0x5a3418,C_GL=0x4a3826,C_SL=0x3a7a3a,C_SL2=0x2c5c2c,C_YL=0xe8c020;
+// Marine's gloved hand on the grip + sleeve running off-screen; optional support hand under the fore-end
+const _hand=(y,z)=>[[.1,.09,.13,C_GL,0,y,z],[.03,.04,.08,C_GL,-.055,y+.05,z-.02],[.12,.11,.06,C_SL2,.01,y-.02,z+.1],[.11,.1,.34,C_SL,.03,y-.07,z+.29]];
+const _hand2=(y,z)=>[[.11,.07,.12,C_GL,-.01,y,z],[.11,.1,.06,C_SL2,-.09,y-.05,z+.07],[.1,.1,.36,C_SL,-.17,y-.1,z+.26]];
+const FP_GUNS={
+    1:{ // PISTOL
+        body:[[.08,.07,.36,C_ST,0,.01,-.52],[.04,.015,.3,C_ST2,0,.05,-.52],[.084,.05,.012,C_DK,0,.01,-.37],[.084,.05,.012,C_DK,0,.01,-.395],[.084,.05,.012,C_DK,0,.01,-.42],
+            [.045,.045,.02,C_BK,0,.01,-.705],[.075,.05,.3,C_DK,0,-.045,-.5],[.02,.015,.09,C_DK,0,-.095,-.45],[.02,.04,.015,C_DK,0,-.08,-.495],[.015,.035,.015,C_BK,0,-.075,-.44],
+            [.085,.2,.11,C_BK,0,-.16,-.33],[.09,.12,.07,C_WD2,0,-.15,-.33],[.02,.025,.02,C_BK,-.022,.06,-.37],[.02,.025,.02,C_BK,.022,.06,-.37],[.03,.04,.03,C_BK,0,.03,-.33],..._hand(-.19,-.33)],
+        glow:[[.02,.03,.02,C_YL,0,.065,-.67]]},
+    2:{ // SHOTGUN
+        body:[[.06,.06,.64,C_DK,0,.07,-.44],[.05,.05,.5,C_ST2,0,0,-.5],[.07,.07,.03,C_ST,0,.07,-.75],[.02,.012,.6,C_ST3,0,.106,-.44],[.1,.14,.22,C_ST2,0,.03,-.2],[.06,.012,.18,C_ST3,0,.106,-.2],[.03,.03,.02,C_BK,0,.115,-.12],[.02,.04,.08,C_BK,.045,.06,-.2],
+            [.1,.085,.2,C_WD,0,-.005,-.55],[.104,.07,.015,C_WD2,0,-.005,-.5],[.104,.07,.015,C_WD2,0,-.005,-.55],[.104,.07,.015,C_WD2,0,-.005,-.6],
+            [.09,.13,.16,C_WD2,0,-.02,-.02],[.08,.14,.09,C_WD2,0,-.1,-.12],[.02,.015,.08,C_DK,0,-.06,-.2],..._hand(-.13,-.12),..._hand2(-.075,-.55)],
+        glow:[[.02,.02,.02,C_YL,0,.11,-.73]]},
+    3:{ // CHAINGUN (barrel cluster is a separate spinning mesh)
+        body:[[.17,.17,.3,C_ST2,0,0,-.4],[.03,.06,.03,C_DK,0,.11,-.3],[.03,.06,.03,C_DK,0,.11,-.48],[.035,.03,.22,C_DK,0,.15,-.39],[.02,.1,.2,C_DK,.09,0,-.4],
+            [.14,.14,.14,0x4a5a2a,-.14,-.1,-.36],[.145,.02,.145,0x34421a,-.14,-.03,-.36],[.13,.13,.08,C_DK,0,0,-.22],[.08,.16,.1,C_BK,0,-.16,-.2],..._hand(-.19,-.2),..._hand2(-.12,-.48)],
+        glow:[[.03,.02,.06,C_YL,-.09,-.02,-.36],[.03,.02,.03,C_YL,-.05,.0,-.36]],
+        spin:{at:[0,0,-.58],parts:[0,1,2,3,4,5].map(i=>[.035,.035,.48,0x26282c,Math.cos(i*Math.PI/3)*.07,Math.sin(i*Math.PI/3)*.07,0])
+            .concat([[.17,.04,.03,C_ST,0,0,-.2],[.04,.17,.03,C_ST,0,0,-.2],[.17,.04,.03,C_ST,0,0,.1],[.04,.17,.03,C_ST,0,0,.1],[.05,.05,.5,C_BK,0,0,0]])}},
+    4:{ // ROCKET LAUNCHER
+        body:[[.17,.17,.56,0x4a5c24,0,0,-.5],[.18,.18,.03,0x34421a,0,0,-.3],[.18,.18,.03,0x34421a,0,0,-.5],[.18,.18,.03,0x34421a,0,0,-.7],[.2,.2,.05,0x2a3414,0,0,-.78],
+            [.12,.12,.08,0xc03018,0,0,-.83],[.19,.19,.05,C_DK,0,0,-.21],[.03,.03,.2,C_DK,0,.1,-.5],[.05,.04,.02,C_DK,0,.12,-.36],[.172,.03,.06,0xd0a020,0,-.06,-.4],
+            [.08,.15,.1,C_BK,0,-.16,-.3],[.07,.12,.08,C_BK,0,-.14,-.58],..._hand(-.19,-.3),..._hand2(-.19,-.58)],
+        glow:[[.06,.06,.04,0xff6a30,0,0,-.88],[.03,.05,.03,C_YL,0,.14,-.58]]},
+    5:{ // PURPLE LASER
+        body:[[.09,.1,.5,0x241238,0,0,-.5],[.03,.12,.22,0x6020a0,.065,0,-.46],[.03,.12,.22,0x6020a0,-.065,0,-.46],[.05,.05,.2,0x140a22,0,0,-.78],[.07,.08,.1,0x3a2060,0,-.08,-.42],
+            [.04,.04,.14,0x140a22,0,.1,-.4],[.08,.16,.1,0x140820,0,-.16,-.3],..._hand(-.19,-.3)],
+        glow:[[.03,.02,.4,0xb040ff,0,.055,-.5],[.01,.06,.16,0xd080ff,.082,0,-.46],[.01,.06,.16,0xd080ff,-.082,0,-.46],[.11,.11,.03,0xb040ff,0,0,-.84],[.07,.07,.03,0xe0a0ff,0,0,-.9],
+            [.02,.03,.06,0x60ff90,.04,-.08,-.42],[.03,.03,.02,0xff60ff,0,.1,-.48]]},
+    6:{ // DOUBLE SHOTGUN
+        body:[[.065,.065,.62,C_DK,.04,.03,-.47],[.065,.065,.62,C_DK,-.04,.03,-.47],[.16,.08,.03,C_ST,0,.03,-.6],[.16,.08,.03,C_ST,0,.03,-.76],[.04,.04,.01,0x000000,.04,.03,-.785],[.04,.04,.01,0x000000,-.04,.03,-.785],
+            [.02,.015,.6,C_ST3,0,.07,-.47],[.15,.07,.26,C_WD,0,-.03,-.52],[.15,.12,.16,C_ST2,0,.02,-.16],[.152,.05,.1,C_ST3,0,.02,-.16],[.025,.04,.03,C_DK,.04,.09,-.1],[.025,.04,.03,C_DK,-.04,.09,-.1],
+            [.1,.13,.14,C_WD2,0,-.03,0],[.08,.12,.09,C_WD2,0,-.1,-.08],..._hand(-.13,-.08),..._hand2(-.09,-.52)],
+        glow:[[.02,.02,.02,0xff8030,0,.085,-.76]]},
+    7:{ // FLAMETHROWER
+        body:[[.1,.1,.44,C_DK,0,0,-.5],[.12,.12,.16,C_ST2,0,0,-.66],[.124,.03,.03,C_BK,0,0,-.61],[.124,.03,.03,C_BK,0,0,-.66],[.124,.03,.03,C_BK,0,0,-.71],[.15,.15,.05,C_DK,0,0,-.78],
+            [.18,.18,.03,C_BK,0,0,-.82],[.02,.02,.1,C_ST3,0,-.07,-.8],[.15,.24,.18,0xa03020,-.15,.02,-.34],[.06,.04,.06,C_ST3,-.15,.16,-.34],[.154,.03,.184,C_DK,-.15,.02,-.34],
+            [.04,.04,.22,C_BK,-.1,-.03,-.52],[.08,.15,.1,C_BK,0,-.15,-.22],[.06,.1,.06,C_BK,0,-.1,-.56],..._hand(-.18,-.22),..._hand2(-.14,-.56)],
+        glow:[[.1,.08,.05,0xff8020,0,0,-.86],[.05,.05,.04,0xffcc40,0,0,-.895],[.03,.03,.01,0x60ff90,-.15,.06,-.435]]},
+    8:{ // LASER RIFLE
+        body:[[.07,.08,.5,C_ST3,0,0,-.5],[.11,.03,.24,C_ST2,0,.055,-.48],[.09,.03,.14,C_ST2,0,-.055,-.5],[.1,.06,.015,C_DK,0,0,-.62],[.1,.06,.015,C_DK,0,0,-.65],[.1,.06,.015,C_DK,0,0,-.68],[.1,.06,.015,C_DK,0,0,-.71],
+            [.09,.09,.04,C_DK,0,0,-.76],[.015,.015,.08,C_ST2,.04,0,-.8],[.015,.015,.08,C_ST2,-.04,0,-.8],[.035,.035,.12,C_BK,0,.09,-.44],[.06,.1,.12,C_ST2,0,-.02,-.2],[.07,.15,.09,C_DK,0,-.14,-.3],..._hand(-.17,-.3)],
+        glow:[[.05,.05,.05,0xff2020,0,0,-.8],[.03,.05,.1,0xff4040,.045,0,-.38],[.025,.025,.01,0xff2020,0,.09,-.505]]},
+    9:{ // MEGA BOMB
+        body:[[.22,.22,.54,0x26282c,0,0,-.5],[.1,.04,.5,C_DK,0,.13,-.5],[.225,.225,.04,0xd0a020,0,0,-.3],[.225,.225,.04,0xd0a020,0,0,-.7],[.17,.17,.12,0xc83a10,0,0,-.84],
+            [.02,.2,.06,C_ST3,0,0,-.8],[.2,.02,.06,C_ST3,0,0,-.8],[.01,.05,.04,C_BK,.112,0,-.4],[.01,.05,.04,C_BK,.112,0,-.48],[.01,.05,.04,C_BK,.112,0,-.56],
+            [.2,.2,.04,C_ST2,0,0,-.21],[.1,.18,.12,C_BK,0,-.19,-.28],[.08,.12,.08,C_BK,0,-.17,-.6],..._hand(-.23,-.28),..._hand2(-.22,-.6)],
+        glow:[[.12,.12,.04,0xffaa00,0,0,-.92],[.03,.05,.03,C_YL,0,.17,-.56]]},
+};
+const _fpCache={};
+function buildFPWeapon(id){
+    for(let i=fpGun.children.length-1;i>=0;i--){const c=fpGun.children[i];if(!c.userData.persistent)fpGun.remove(c);}
+    if(!_fpCache[id]){
+        const X=0.26,Y=-0.22,d=FP_GUNS[id]||FP_GUNS[1],list=[_voxMesh(d.body,_fpBodyMat,X,Y,0)];
+        if(d.glow&&d.glow.length)list.push(_voxMesh(d.glow,_fpGlowMat,X,Y,0));
+        if(d.spin){
+            const sp=_voxMesh(d.spin.parts,_fpBodyMat);
+            sp.position.set(X+d.spin.at[0],Y+d.spin.at[1],d.spin.at[2]);
+            sp.userData.isSpin=true;
+            list.push(sp);
+        }
+        _fpCache[id]=list;
+    }
+    for(const m of _fpCache[id])fpGun.add(m);
     fpGunCurrent=id;
 }
 buildFPWeapon(1);
@@ -1989,6 +1934,7 @@ function die(){
 function startWave(){
     waveNum++;phase='spawn';
     applyTheme(waveNum-1); // [v2] new scenery every wave
+    genMaze3D(waveNum-1);  // [v2] and a new wall layout; anything caught inside a wall is pushed out by the normal collision
     toSpawn=15+waveNum*8;spawnRate=Math.max(0.08,0.4-waveNum*0.025);
     spawnT=0;crateT=4+Math.random()*3;
     announce('WAVE '+waveNum,themeName+' · '+toSpawn+' ENEMIES',2400);
