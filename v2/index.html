@@ -474,14 +474,24 @@ mkWall(WALL_T,WALL_H,AH, AW/2,WALL_H/2,0);   // east
 
 // Inner maze walls (symmetric layouts)
 let innerWalls=[], innerWallMeshes=[];
-const MAZE_LAYOUTS=[ // [v2] one per wave, in rotation (mirrored 4 ways by genMaze3D)
-    [{x:7,z:0,w:1,d:6},{x:18,z:-4,w:2,d:2},{x:5,z:-10,w:2,d:2},{x:20,z:10,w:2,d:2}],            // v1 original
-    [{x:8,z:6,w:2,d:2},{x:16,z:6,w:2,d:2},{x:8,z:12,w:2,d:2},{x:16,z:0,w:2,d:2},{x:0,z:8,w:2,d:2}], // pillar hall
-    [{x:6,z:0,w:6,d:1},{x:15,z:0,w:1,d:4},{x:10,z:7,w:1,d:5},{x:0,z:11,w:5,d:1},{x:20,z:9,w:4,d:1}], // scattered barriers
-    [{x:10,z:0,w:1,d:8},{x:0,z:9,w:10,d:1},{x:18,z:4,w:1,d:6},{x:5,z:5,w:2,d:2}],                   // cross
-    [{x:5,z:4,w:1,d:5},{x:12,z:0,w:1,d:7},{x:9,z:9,w:5,d:1},{x:19,z:5,w:1,d:5},{x:0,z:13,w:5,d:1}], // staggered corridors
-    [{x:0,z:5,w:8,d:1},{x:8,z:0,w:1,d:4},{x:16,z:3,w:1,d:7},{x:10,z:11,w:6,d:1},{x:21,z:0,w:2,d:2}], // long walls
-    [{x:4,z:4,w:1,d:4},{x:9,z:0,w:4,d:1},{x:13,z:5,w:1,d:5},{x:18,z:2,w:4,d:1},{x:20,z:10,w:3,d:1}], // dense maze
+const MAZE_LAYOUTS=[ // [v2] one arena shape per wave. h = wall height (default full), nm = no mirroring
+    // 0 Infernal Keep: the v1 original
+    [{x:7,z:0,w:1,d:6},{x:18,z:-4,w:2,d:2},{x:5,z:-10,w:2,d:2},{x:20,z:10,w:2,d:2}],
+    // 1 Tech Hell: pillar forest
+    [{x:6,z:5,w:1.5,d:1.5},{x:12,z:5,w:1.5,d:1.5},{x:18,z:5,w:1.5,d:1.5},{x:6,z:11,w:1.5,d:1.5},{x:12,z:11,w:1.5,d:1.5},{x:18,z:11,w:1.5,d:1.5},
+     {x:12,z:0,w:1.5,d:1.5},{x:19,z:0,w:1.5,d:1.5},{x:0,z:8,w:1.5,d:1.5}],
+    // 2 Blood Cathedral: nave with colonnades, low pews and an altar block
+    [{x:6,z:6,w:6,d:1},{x:17,z:6,w:6,d:1},{x:21,z:0,w:1,d:5},{x:6,z:11,w:5,d:1,h:1.5},{x:14,z:11,w:5,d:1,h:1.5},{x:11,z:1.5,w:3,d:1,h:1.5}],
+    // 3 Void Arena: a few big slabs of different heights
+    [{x:10,z:7,w:5,d:4,h:2},{x:19,z:0,w:2,d:6},{x:0,z:12,w:6,d:2,h:1.6},{x:20,z:12,w:2,d:2,h:3.2}],
+    // 4 Cryo Lab: long lanes
+    [{x:8,z:4,w:10,d:1},{x:8,z:10,w:10,d:1},{x:19,z:7,w:1,d:5},{x:0,z:7,w:1,d:3,h:2},{x:21,z:13,w:2,d:2,h:2.4}],
+    // 5 Ash Wastes: broken ruins, asymmetric, every piece a different height
+    [{x:-15,z:-8,w:5,d:1,h:3,nm:1},{x:-13,z:-5.5,w:1,d:4,h:1.6,nm:1},{x:9,z:-10,w:1,d:5,h:4,nm:1},{x:12,z:-8,w:5,d:1,h:2,nm:1},
+     {x:-6,z:9,w:6,d:1,h:2.4,nm:1},{x:-9,z:11,w:1,d:3,h:4.5,nm:1},{x:16,z:7,w:3,d:3,h:1.6,nm:1},{x:5,z:6,w:2,d:2,h:3.2,nm:1},
+     {x:-18,z:4,w:2,d:2,h:2,nm:1},{x:19,z:-2,w:1,d:4,h:3.5,nm:1},{x:-4,z:-11,w:3,d:1,h:1.6,nm:1},{x:0,z:-6,w:2,d:1,h:1.5,nm:1}],
+    // 6 Bone Mire: dense maze
+    [{x:4,z:4,w:1,d:4},{x:9,z:0,w:4,d:1},{x:13,z:5,w:1,d:5},{x:18,z:2,w:4,d:1},{x:20,z:10,w:3,d:1},{x:8,z:11,w:5,d:1,h:2}],
 ];
 // One shared Lambert material for all inner walls
 
@@ -493,31 +503,91 @@ function genMaze3D(idx){
     for(const def of layout){
         const positions=[];
         positions.push({x:def.x,z:def.z});
-        if(def.x!==0)positions.push({x:-def.x,z:def.z});
-        if(def.z!==0)positions.push({x:def.x,z:-def.z});
-        if(def.x!==0&&def.z!==0)positions.push({x:-def.x,z:-def.z});
+        if(!def.nm&&def.x!==0)positions.push({x:-def.x,z:def.z});
+        if(!def.nm&&def.z!==0)positions.push({x:def.x,z:-def.z});
+        if(!def.nm&&def.x!==0&&def.z!==0)positions.push({x:-def.x,z:-def.z});
         for(const pos of positions){
             if(Math.abs(pos.x)<3&&Math.abs(pos.z)<3)continue;
             if(Math.abs(pos.x)+def.w/2>AW/2-2)continue;
             if(Math.abs(pos.z)+def.d/2>AH/2-2)continue;
             innerWalls.push({x:pos.x,z:pos.z,w:def.w,d:def.d});
-            const m=new THREE.Mesh(worldBox(def.w,WALL_H,def.d),innerWallMat);
-            m.position.set(pos.x,WALL_H/2,pos.z);
+            const wh=def.h||WALL_H;
+            const m=new THREE.Mesh(worldBox(def.w,wh,def.d),innerWallMat);
+            m.position.set(pos.x,wh/2,pos.z);
             scene.add(m);innerWallMeshes.push(m);
         }
     }
 }
 // ===== [v2] SCENERY THEMES — one per wave, visuals only =====
 const THEMES=[
-    {id:'infernal', name:'INFERNAL KEEP',  fog:0x120403, sky:0xffe4c8, ground:0x3a2018, hemi:2.3, ceil:0xffb0a0, wallRep:2, floorTile:2},
-    {id:'tech',     name:'TECH HELL',      fog:0x030c0c, sky:0xd0ecff, ground:0x14282a, hemi:2.5, ceil:0x90b0ff, wallRep:1, floorTile:4},
-    {id:'cathedral',name:'BLOOD CATHEDRAL',fog:0x0e0508, sky:0xffe0c0, ground:0x30181c, hemi:2.3, ceil:0xffa0a0, wallRep:1, floorTile:4},
-    {id:'void',     name:'VOID ARENA',     fog:0x070312, sky:0xdcc8ff, ground:0x201038, hemi:2.6, ceil:0xb090ff, wallRep:1, floorTile:4},
-    {id:'cryo',     name:'CRYO LAB',       fog:0x06101a, sky:0xd8f0ff, ground:0x18304a, hemi:2.2, ceil:0x90c8ff, wallRep:1, floorTile:4},
-    {id:'ash',      name:'ASH WASTES',     fog:0x140a05, sky:0xffd8b0, ground:0x38200c, hemi:2.3, ceil:0xffc090, wallRep:1, floorTile:4},
-    {id:'bone',     name:'BONE MIRE',      fog:0x070d05, sky:0xe0ffd0, ground:0x1a2a12, hemi:2.3, ceil:0xa0ff90, wallRep:1, floorTile:4},
+    {id:'infernal', name:'INFERNAL KEEP',  fog:0x120403, sky:0xffe4c8, ground:0x3a2018, hemi:2.3, ceil:0xffb0a0, wallRep:2, floorTile:2, open:false, prop:{type:'flame',color:0xff7a20,g:[.22,.3,.22],stand:[.14,1.3,.14],y:1.45,gap:6}, amb:{color:0xff8030,vy:.6,drift:.3,size:.07}},
+    {id:'tech',     name:'TECH HELL',      fog:0x030c0c, sky:0xd0ecff, ground:0x14282a, hemi:2.5, ceil:0x90b0ff, wallRep:1, floorTile:4, open:false, prop:{type:'tube',color:0x40ffa0,g:[.1,3,.1],y:2.2,gap:5}, amb:{color:0x60ffb0,vy:-.15,drift:.1,size:.05}},
+    {id:'cathedral',name:'BLOOD CATHEDRAL',fog:0x0e0508, sky:0xffe0c0, ground:0x30181c, hemi:2.3, ceil:0xffa0a0, wallRep:1, floorTile:4, open:false, prop:{type:'flame',color:0xffc040,g:[.1,.16,.1],stand:[.08,1.6,.08],y:1.68,gap:4}, amb:{color:0xffd080,vy:.12,drift:.15,size:.05}},
+    {id:'void',     name:'VOID ARENA',     fog:0x070312, sky:0xdcc8ff, ground:0x201038, hemi:2.6, ceil:0xb090ff, wallRep:1, floorTile:4, open:true, prop:{type:'float',color:0xb070ff,g:[.4,.4,.4],y:2.6,gap:7}, amb:{color:0xd0b0ff,vy:.03,drift:.05,size:.06}},
+    {id:'cryo',     name:'CRYO LAB',       fog:0x06101a, sky:0xd8f0ff, ground:0x18304a, hemi:2.2, ceil:0x90c8ff, wallRep:1, floorTile:4, open:false, prop:{type:'crystal',color:0x80e0ff,g:[.35,.9,.35],y:.5,gap:5}, amb:{color:0xe0f4ff,vy:-.5,drift:.4,size:.06}},
+    {id:'ash',      name:'ASH WASTES',     fog:0x140a05, sky:0xffd8b0, ground:0x38200c, hemi:2.3, ceil:0xffc090, wallRep:1, floorTile:4, open:true, prop:{type:'flame',color:0xff5a10,g:[.4,.45,.4],stand:[.5,.5,.5],y:.72,gap:9}, amb:{color:0x8a8078,vy:-.35,drift:.5,size:.07}},
+    {id:'bone',     name:'BONE MIRE',      fog:0x070d05, sky:0xe0ffd0, ground:0x1a2a12, hemi:2.3, ceil:0xa0ff90, wallRep:1, floorTile:4, open:true, prop:{type:'flame',color:0x70ff30,g:[.2,.3,.2],stand:[.12,1.2,.12],y:1.35,gap:7}, amb:{color:0x90ff50,vy:.2,drift:.3,size:.06}},
 ];
 let themeName='';
+// --- glowing voxel props along the outer walls (one or two instanced meshes per theme)
+let _props=null;
+const _pm=new THREE.Matrix4(),_pq=new THREE.Quaternion(),_pe=new THREE.Euler(),_pp=new THREE.Vector3(),_ps=new THREE.Vector3();
+function buildProps(th){
+    if(_props){
+        for(const m of [_props.glow,_props.stand]){if(m){scene.remove(m);m.geometry.dispose();m.material.dispose();m.dispose();}}
+        _props=null;
+    }
+    const p=th.prop;if(!p)return;
+    const pts=[],ix=AW/2-WALL_T/2-0.4,iz=AH/2-WALL_T/2-0.4;
+    for(let x=-AW/2+4;x<=AW/2-4;x+=p.gap){pts.push([x,-iz],[x,iz]);}
+    for(let z=-AH/2+5;z<=AH/2-5;z+=p.gap){pts.push([-ix,z],[ix,z]);}
+    const glow=new THREE.InstancedMesh(new THREE.BoxGeometry(p.g[0],p.g[1],p.g[2]),new THREE.MeshBasicMaterial({color:p.color}),pts.length);
+    glow.frustumCulled=false;scene.add(glow);
+    let stand=null;
+    if(p.stand){
+        stand=new THREE.InstancedMesh(new THREE.BoxGeometry(p.stand[0],p.stand[1],p.stand[2]),new THREE.MeshLambertMaterial({color:0x2e2826}),pts.length);
+        pts.forEach(([x,z],i)=>{_pm.makeTranslation(x,p.stand[1]/2,z);stand.setMatrixAt(i,_pm);});
+        stand.frustumCulled=false;scene.add(stand);
+    }
+    _props={glow,stand,type:p.type,y:p.y,h:p.g[1],items:pts.map(([x,z])=>({x,z,ph:Math.random()*6.28,s:0.7+Math.random()*0.7}))};
+    updateProps(0);
+}
+function updateProps(t){
+    const P=_props;if(!P)return;
+    for(let i=0;i<P.items.length;i++){
+        const it=P.items[i];let sx=1,sy=1,y=P.y,rx=0,ry=0;
+        if(P.type==='flame'){sy=0.8+0.3*Math.sin(t*11+it.ph)+0.12*Math.sin(t*23+it.ph*2);sx=0.9+0.15*Math.sin(t*17+it.ph);y+=(sy-1)*P.h/2;}
+        else if(P.type==='float'){y+=Math.sin(t*1.3+it.ph)*0.4;ry=t*0.8+it.ph;rx=t*0.5+it.ph;}
+        else if(P.type==='crystal'){rx=0.5;ry=it.ph;sx=sy=it.s;y=P.h*it.s*0.45;}
+        _pp.set(it.x,y,it.z);_ps.set(sx,sy,sx);_pq.setFromEuler(_pe.set(rx,ry,rx*0.6));
+        _pm.compose(_pp,_pq,_ps);P.glow.setMatrixAt(i,_pm);
+    }
+    P.glow.instanceMatrix.needsUpdate=true;
+}
+// --- ambient specks (embers, snow, ash, spores, stars): one Points object, kept around the player
+const AMB_N=150,_ambPos=new Float32Array(AMB_N*3),_ambSeed=new Float32Array(AMB_N);
+for(let i=0;i<AMB_N;i++){_ambPos[i*3]=(Math.random()-0.5)*28;_ambPos[i*3+1]=Math.random()*6;_ambPos[i*3+2]=(Math.random()-0.5)*28;_ambSeed[i]=Math.random();}
+const _ambGeo=new THREE.BufferGeometry();
+_ambGeo.setAttribute('position',new THREE.BufferAttribute(_ambPos,3));
+const _ambMat=new THREE.PointsMaterial({size:0.07,color:0xffffff});
+const _ambPts=new THREE.Points(_ambGeo,_ambMat);
+_ambPts.frustumCulled=false;scene.add(_ambPts);
+let _amb={vy:0.3,drift:0.2};
+function updateScenery(dt){
+    const t=performance.now()*0.001;
+    if(_props&&_props.type!=='tube'&&_props.type!=='crystal')updateProps(t);
+    for(let i=0;i<AMB_N;i++){
+        const k=i*3,sd=_ambSeed[i];
+        _ambPos[k]+=Math.sin(t*0.7+sd*40)*_amb.drift*dt;
+        _ambPos[k+2]+=Math.cos(t*0.5+sd*30)*_amb.drift*dt;
+        _ambPos[k+1]+=_amb.vy*(0.5+sd)*dt;
+        if(_ambPos[k+1]>6)_ambPos[k+1]=0;else if(_ambPos[k+1]<0)_ambPos[k+1]=6;
+        const dx=_ambPos[k]-pl.x,dz=_ambPos[k+2]-pl.z;
+        if(dx>14)_ambPos[k]-=28;else if(dx<-14)_ambPos[k]+=28;
+        if(dz>14)_ambPos[k+2]-=28;else if(dz<-14)_ambPos[k+2]+=28;
+    }
+    _ambGeo.attributes.position.needsUpdate=true;
+}
 function applyTheme(i){
     const th=THEMES[((i%THEMES.length)+THEMES.length)%THEMES.length],tx=biomeTextures(th.id);
     themeName=th.name;
@@ -534,13 +604,16 @@ function applyTheme(i){
     innerWallMat.map=wallMat.map;innerWallMat.emissiveMap=wallMat.emissiveMap;
     innerWallMat.emissive.copy(wallMat.emissive);innerWallMat.emissiveIntensity=wallMat.emissiveIntensity;innerWallMat.needsUpdate=true;
     ceilMat.color.setHex(th.ceil);
+    ceiling.visible=!th.open;          // some themes are open to the sky
+    buildProps(th);
+    _ambMat.color.setHex(th.amb.color);_ambMat.size=th.amb.size;_amb=th.amb;
     _themeFog=th.fog;
     scene.fog.color.setHex(th.fog);
     renderer.setClearColor(th.fog);
     hemiLight.color.setHex(th.sky);hemiLight.groundColor.setHex(th.ground);hemiLight.intensity=th.hemi;
 }
 applyTheme(0);
-if(new URLSearchParams(location.search).has('debug')){window.__theme=applyTheme;window.__maze=i=>genMaze3D(i);window.__wep=i=>{unlockedWeapons[i]=true;pl.wep=i;};window.__god=()=>{pl.maxHp=pl.hp=1e6;};}
+if(new URLSearchParams(location.search).has('debug')){window.__theme=applyTheme;window.__maze=i=>genMaze3D(i);window.__wep=i=>{unlockedWeapons[i]=true;pl.wep=i;};window.__god=()=>{pl.maxHp=pl.hp=1e6;};window.__spawn=(t,x,z)=>{const e=mkEnemy(t,x,z);e.spd=0;e.dmg=0;enemies.push(e);return e;};window.__boss=(i,x,z)=>{const e=mkBoss(i,x,z);e.spd=0;e.dmg=0;e.fRate=1e9;enemies.push(e);return e;};window.__look=(a,p)=>{pl.angle=a;pl.pitch=p||0;};window.__clear=()=>{enemies.forEach(e=>{if(e.mesh)scene.remove(e.mesh);});enemies.length=0;toSpawn=0;};Object.defineProperty(window,"__pl",{get:()=>pl});}
 
 // Collision with inner walls (circle vs AABB)
 function colInnerWalls(e){
@@ -1226,15 +1299,32 @@ let flashT=0,flashSize=0.35;
 const _fpBodyMat=new THREE.MeshLambertMaterial({vertexColors:true});
 const _fpGlowMat=new THREE.MeshBasicMaterial({vertexColors:true});
 const _fpCol=new THREE.Color();
-function _voxMesh(parts,mat,ox=0,oy=0,oz=0){
-    const pos=[],nor=[],col=[],idx=[];
+// 16x16 grey "worn panel" texture multiplied over the vertex colours: seams, rivets, scratches
+const _gunTex=mkPixTex(16,(ctx,sz)=>{
+    for(let y=0;y<sz;y++)for(let x=0;x<sz;x++){
+        let v=200+Math.random()*45;
+        if(y%8===0)v=140;                       // panel seam
+        if(x===0&&(y>>3)%2===0)v=150;           // staggered vertical seam
+        if((x===3&&y===3)||(x===12&&y===11))v=95; // rivets
+        if(Math.random()<0.04)v=255;            // scratch glint
+        if(Math.random()<0.05)v=165;            // grime
+        ctx.fillStyle=`rgb(${v|0},${v|0},${v|0})`;ctx.fillRect(x,y,1,1);
+    }
+});
+_fpBodyMat.map=_gunTex;
+const _VOX_SP=[[2,1],[2,1],[0,2],[0,2],[0,1],[0,1]]; // which box dimensions each face's u,v run along
+function _voxGeo(parts,ox=0,oy=0,oz=0){
+    const pos=[],nor=[],col=[],uvs=[],idx=[],T=0.12;
     for(const [w,h,d,c,x,y,z] of parts){
-        const g=new THREE.BoxGeometry(w,h,d),p=g.attributes.position,n=g.attributes.normal,base=pos.length/3;
+        const g=new THREE.BoxGeometry(w,h,d),p=g.attributes.position,n=g.attributes.normal,u=g.attributes.uv,base=pos.length/3,dim=[w,h,d];
         _fpCol.setHex(c);
+        const off=(x*7.3+y*5.1+z*3.7)%1; // shift the tile per box so seams do not line up
         for(let i=0;i<p.count;i++){
             pos.push(p.getX(i)+x+ox,p.getY(i)+y+oy,p.getZ(i)+z+oz);
             nor.push(n.getX(i),n.getY(i),n.getZ(i));
             col.push(_fpCol.r,_fpCol.g,_fpCol.b);
+            const sp=_VOX_SP[(i/4)|0];
+            uvs.push(u.getX(i)*dim[sp[0]]/T+off,u.getY(i)*dim[sp[1]]/T+off);
         }
         for(let i=0;i<g.index.count;i++)idx.push(g.index.getX(i)+base);
         g.dispose();
@@ -1243,9 +1333,11 @@ function _voxMesh(parts,mat,ox=0,oy=0,oz=0){
     geo.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
     geo.setAttribute('normal',new THREE.Float32BufferAttribute(nor,3));
     geo.setAttribute('color',new THREE.Float32BufferAttribute(col,3));
+    geo.setAttribute('uv',new THREE.Float32BufferAttribute(uvs,2));
     geo.setIndex(idx);
-    return new THREE.Mesh(geo,mat);
+    return geo;
 }
+function _voxMesh(parts,mat,ox=0,oy=0,oz=0){return new THREE.Mesh(_voxGeo(parts,ox,oy,oz),mat);}
 // palette
 const C_ST=0x6a6e78,C_ST2=0x50545c,C_ST3=0x8a8e96,C_DK=0x2e3036,C_BK=0x1a1b1e,C_WD=0x7a4a26,C_WD2=0x5a3418,C_GL=0x4a3826,C_SL=0x3a7a3a,C_SL2=0x2c5c2c,C_YL=0xe8c020;
 // Marine's gloved hand on the grip + sleeve running off-screen; optional support hand under the fore-end
@@ -1298,6 +1390,31 @@ const FP_GUNS={
             [.2,.2,.04,C_ST2,0,0,-.21],[.1,.18,.12,C_BK,0,-.19,-.28],[.08,.12,.08,C_BK,0,-.17,-.6],..._hand(-.23,-.28),..._hand2(-.22,-.6)],
         glow:[[.12,.12,.04,0xffaa00,0,0,-.92],[.03,.05,.03,C_YL,0,.17,-.56]]},
 };
+// Extra surface detail, mostly on top where the camera looks: ports, vents, stripes, stencils, lights
+const C_WH=0xd8d8d0,C_RD=0xc03020;
+const _row=(n,fn)=>Array.from({length:n},(_,i)=>fn(i));
+const FP_EXTRA={
+    1:{body:[[.03,.006,.07,C_BK,.018,.048,-.5],[.082,.008,.02,C_ST3,0,.046,-.62],[.082,.008,.02,C_ST3,0,.046,-.44],[.086,.02,.02,C_ST3,0,-.03,-.6],[.01,.01,.01,C_ST3,.04,-.045,-.42],[.01,.01,.01,C_ST3,.04,-.045,-.56],
+            [.092,.02,.072,C_WD,0,-.1,-.33],[.092,.02,.072,C_WD,0,-.2,-.33]],glow:[[.012,.012,.012,0xff3020,.042,.0,-.4]]},
+    2:{body:[[.025,.025,.05,C_RD,-.045,.11,-.14],[.025,.025,.05,C_RD,-.045,.11,-.2],[.025,.025,.05,C_RD,-.045,.11,-.26],[.065,.065,.02,C_ST,0,.07,-.3],[.065,.065,.02,C_ST,0,.07,-.62],
+            [.104,.02,.02,C_ST3,0,.04,-.55],[.104,.012,.2,C_DK,0,-.05,-.55],[.012,.012,.012,C_ST3,.051,.06,-.12],[.012,.012,.012,C_ST3,.051,.0,-.28]],glow:[[.026,.026,.008,C_YL,-.045,.11,-.11]]},
+    3:{body:[..._row(3,i=>[.1,.006,.02,C_BK,0,.087,-.31-i*.05]),[.17,.006,.03,C_YL,0,.087,-.52],[.17,.006,.01,C_BK,0,.089,-.52],[.172,.03,.02,C_ST3,0,.05,-.26],[.172,.03,.02,C_ST3,0,.05,-.54],
+            [.012,.012,.012,C_ST3,.086,.06,-.3],[.012,.012,.012,C_ST3,.086,.06,-.5],[.012,.012,.012,C_ST3,.086,-.06,-.3],[.012,.012,.012,C_ST3,.086,-.06,-.5],[.142,.02,.02,C_YL,-.14,-.1,-.3]],
+        glow:[[.02,.012,.02,0xff3020,.05,.088,-.28],[.02,.012,.02,0x40ff60,.02,.088,-.28]]},
+    4:{body:[..._row(4,i=>[.02,.004,.02,C_WH,-.05+i*.033,.087,-.42]),[.06,.004,.02,C_WH,0,.087,-.62],[.02,.004,.05,C_RD,.06,.087,-.62],[.172,.172,.012,C_YL,0,0,-.755],[.01,.06,.12,C_WH,.086,.0,-.5],
+            [.03,.03,.03,C_ST3,0,.1,-.4],[.012,.012,.012,C_ST3,.086,.06,-.3],[.012,.012,.012,C_ST3,.086,.06,-.7]],glow:[[.02,.012,.02,0xff3020,-.05,.088,-.3]]},
+    5:{body:[..._row(4,i=>[.05,.006,.015,0x140a22,0,.052,-.3-i*.035]),[.092,.03,.02,0x6020a0,0,.0,-.28],[.092,.03,.02,0x6020a0,0,.0,-.7],[.012,.012,.012,0xd080ff,.046,.03,-.36],[.012,.012,.012,0xd080ff,.046,.03,-.64]],
+        glow:[[.012,.012,.3,0xe0a0ff,.046,-.02,-.5],[.012,.012,.3,0xe0a0ff,-.046,-.02,-.5],[.03,.03,.03,0xffffff,0,0,-.92]]},
+    6:{body:[[.025,.025,.05,C_RD,.03,.085,-.2],[.025,.025,.05,C_RD,-.03,.085,-.2],[.152,.012,.02,C_YL,0,.082,-.12],[.02,.02,.02,C_ST3,.07,.02,-.12],[.02,.02,.02,C_ST3,.07,.02,-.2],
+            [.154,.02,.02,C_WD2,0,-.03,-.42],[.154,.02,.02,C_WD2,0,-.03,-.52],[.154,.02,.02,C_WD2,0,-.03,-.62],[.066,.066,.02,C_ST,.04,.03,-.3],[.066,.066,.02,C_ST,-.04,.03,-.3]],glow:[]},
+    7:{body:[[.1,.006,.05,C_YL,-.15,.142,-.3],[.1,.007,.012,C_BK,-.15,.143,-.3],[.156,.06,.02,C_WH,-.15,.06,-.34],[.02,.02,.02,C_ST3,-.15,.19,-.34],[.102,.02,.02,C_ST3,0,.0,-.34],[.102,.02,.02,C_ST3,0,.0,-.56],
+            [.012,.012,.012,C_ST3,.051,.03,-.4],[.012,.012,.012,C_ST3,.051,.03,-.5],[.03,.03,.16,0x8a5a20,-.1,.02,-.5]],glow:[[.02,.02,.02,0xff3020,.03,.052,-.36],[.06,.012,.02,0xff8020,0,.062,-.66]]},
+    8:{body:[..._row(5,i=>[.02,.006,.02,C_BK,0,.072,-.4-i*.04]),[.072,.02,.02,C_YL,0,.0,-.3],[.012,.012,.012,C_BK,.036,.02,-.36],[.012,.012,.012,C_BK,.036,.02,-.56],[.112,.012,.02,C_ST3,0,.07,-.37],[.112,.012,.02,C_ST3,0,.07,-.59]],
+        glow:[[.01,.01,.36,0xff4040,.036,-.02,-.5],[.01,.01,.36,0xff4040,-.036,-.02,-.5],[.02,.012,.02,0x40ff60,.03,.072,-.38]]},
+    9:{body:[..._row(5,i=>[.1,.006,.04,i%2?C_BK:C_YL,0,.152,-.3-i*.1]),[.222,.06,.012,C_WH,0,.05,-.5],[.01,.08,.08,C_WH,.111,.04,-.62],[.03,.03,.03,C_ST3,.07,.112,-.24],[.03,.03,.03,C_ST3,-.07,.112,-.24],
+            [.03,.03,.03,C_ST3,.07,.112,-.76],[.03,.03,.03,C_ST3,-.07,.112,-.76],[.172,.172,.012,C_BK,0,0,-.77]],glow:[[.02,.012,.02,0xff3020,.05,.112,-.3],[.02,.012,.02,0xff3020,.05,.112,-.34],[.06,.06,.02,0xffffff,0,0,-.945]]},
+};
+for(const k of Object.keys(FP_EXTRA)){FP_GUNS[k].body.push(...FP_EXTRA[k].body);FP_GUNS[k].glow.push(...FP_EXTRA[k].glow);}
 const _fpCache={};
 function buildFPWeapon(id){
     for(let i=fpGun.children.length-1;i>=0;i--){const c=fpGun.children[i];if(!c.userData.persistent)fpGun.remove(c);}
@@ -1316,6 +1433,79 @@ function buildFPWeapon(id){
     fpGunCurrent=id;
 }
 buildFPWeapon(1);
+
+// ===== [v2] ENEMY DETAIL LAYER =====
+// The v1 bodies (and the parts the game animates) are untouched. On top of each one goes ONE extra
+// mesh of small voxels (teeth, horn tips, claws, spines, plates), merged, with geometry cached per type.
+// Monsters face -Z. Each gets its own material because the hit flash recolours materials per enemy.
+const _detGeo={};
+function _addDetail(mesh,key,partsFn){
+    if(!_detGeo[key])_detGeo[key]=_voxGeo(partsFn());
+    mesh.add(new THREE.Mesh(_detGeo[key],new THREE.MeshLambertMaterial({vertexColors:true})));
+}
+const _mir=(w,h,d,c,x,y,z)=>[[w,h,d,c,x,y,z],[w,h,d,c,-x,y,z]];
+const ENEMY_DETAIL={
+    imp:()=>[[.16,.04,.02,0x300404,0,.93,-.155],..._mir(.03,.045,.02,0xffffff,.05,.94,-.16),[.3,.04,.04,0x801008,0,1.12,-.15],..._mir(.06,.08,.06,0xffd0a0,.12,1.38,0),
+        [.06,.08,.08,0x601008,0,.8,.14],[.06,.08,.08,0x601008,0,.67,.14],[.06,.07,.07,0x601008,0,.55,.13],..._mir(.08,.1,.08,0x801008,.3,.9,0),[.2,.16,.02,0xd04020,0,.66,-.115],
+        [.42,.06,.24,0x3a1408,0,.5,0],[.08,.05,.02,0xe8c020,0,.5,-.125],..._mir(.03,.06,.03,0xffe0a0,.25,.4,-.03),..._mir(.03,.06,.03,0xffe0a0,.31,.4,-.03),[.06,.06,.2,0x901808,0,.52,.2],[.05,.05,.08,0x601008,0,.56,.32]],
+    skull:()=>[..._mir(.07,.14,.07,0xa09080,.16,1.4,0),..._mir(.05,.08,.05,0x70604c,.2,1.5,0),[.05,.06,.02,0x201810,0,1.14,-.155],..._row(4,i=>[.04,.05,.02,0xf0e8d0,-.09+i*.06,1.05,-.13]),
+        [.02,.1,.02,0x706050,.1,1.3,-.155],[.02,.06,.02,0x706050,-.13,1.12,-.155],..._mir(.04,.04,.02,0x180404,.1,1.25,-.19),
+        [.2,.2,.12,0xff7a20,0,1.25,.2],[.12,.14,.1,0xffc040,0,1.37,.3],[.1,.1,.1,0xff5010,.08,1.12,.3],[.08,.1,.08,0xff5010,-.1,1.3,.38],[.06,.08,.06,0xffe080,0,1.48,.4]],
+    demon:()=>[[.4,.1,.12,0x882244,0,.86,-.2],[.34,.07,.02,0x300010,0,.93,-.18],..._row(4,i=>[.05,.07,.03,0xffffff,-.13+i*.087,.94,-.2]),..._mir(.05,.1,.04,0xffffff,.16,.94,-.25),
+        [.45,.05,.05,0x771a3a,0,1.13,-.17],..._mir(.08,.1,.08,0xffe0c0,.22,1.5,0),..._mir(.2,.16,.26,0x882244,.3,.82,0),..._mir(.06,.08,.06,0xffe0c0,.34,.94,0),
+        [.08,.12,.08,0x661530,0,.9,.17],[.08,.12,.08,0x661530,0,.75,.17],[.08,.1,.08,0x661530,0,.6,.17],[.3,.2,.02,0xc85080,0,.56,-.155],
+        ..._mir(.12,.25,.12,0xaa3366,.34,.58,-.05),..._mir(.04,.06,.04,0xffffff,.31,.44,-.1),..._mir(.04,.06,.04,0xffffff,.37,.44,-.1),[.08,.08,.16,0x882244,0,.5,.22]],
+    caco:()=>[..._mir(.1,.16,.1,0x801818,.25,1.82,.15),..._mir(.1,.16,.1,0x801818,.25,1.82,-.15),..._mir(.05,.08,.05,0xffe0c0,.25,1.94,.15),..._mir(.05,.08,.05,0xffe0c0,.25,1.94,-.15),
+        ..._mir(.14,.1,.1,0x801818,.45,1.55,0),[.08,.14,.02,0x083008,0,1.5,-.415],[.3,.05,.06,0x992222,0,1.65,-.37],[.3,.04,.06,0x992222,0,1.36,-.37],
+        ..._row(4,i=>[.05,.06,.03,0xffffff,-.11+i*.073,1.25,-.4]),..._row(3,i=>[.05,.05,.03,0xffffff,-.075+i*.075,1.15,-.4]),[.36,.05,.08,0x992222,0,1.1,-.36],
+        [.5,.08,.5,0x992222,0,1.03,0],..._mir(.06,.3,.3,0xaa3030,.43,1.35,.05),[.2,.16,.02,0x4a4acc,-.26,1.28,-.355],[.12,.1,.02,0x4a4acc,.28,1.6,-.355],
+        ..._row(3,i=>[.06,.2,.06,0x802020,-.2+i*.2,.93,.1]),[.06,.14,.06,0x802020,0,.96,-.15]],
+    baron:()=>[[.18,.12,.1,0x557a2a,0,1.27,-.2],..._mir(.03,.03,.02,0x101808,.04,1.28,-.255),..._mir(.03,.045,.02,0xffffff,.05,1.2,-.24),[.35,.05,.05,0x2a3a12,0,1.5,-.16],
+        ..._mir(.14,.08,.08,0x554422,.24,1.72,-.05),..._mir(.07,.1,.07,0xe8d8a0,.31,1.8,-.05),..._mir(.22,.14,.03,0x5a8030,.12,1.02,-.16),[.2,.2,.02,0x385518,0,.8,-.155],
+        [.04,.2,.02,0x2a3a12,0,.8,-.16],..._mir(.22,.1,.22,0x2a3a12,.34,1.16,0),..._mir(.06,.1,.06,0xe8d8a0,.4,1.25,0),..._mir(.2,.14,.2,0x60ff40,.34,.6,0),..._mir(.1,.1,.1,0xc0ffa0,.34,.72,0),
+        [.52,.07,.32,0x2a1a0a,0,.63,0],[.1,.08,.02,0xe8c020,0,.63,-.165],[.2,.14,.03,0x4a3018,0,.52,-.16],[.08,.08,.2,0x446622,0,.6,.22],[.06,.06,.12,0x2a3a12,0,.56,.36]],
+};
+const _lighter=c=>{const f=v=>Math.min(255,(v*1.35+20)|0);return (f((c>>16)&255)<<16)|(f((c>>8)&255)<<8)|f(c&255);};
+const C_BONE=0xf0e8d0,C_GOLD=0xe8c020,C_IRON=0x6a6a6a;
+function bossDetail(idx,s,d,col2){
+    const c=d.col,e=d.eye,L=_lighter(c);
+    switch(idx){
+    case 0:return [..._row(5,i=>[.12,.2,.08,C_BONE,-s*.14+i*s*.07,s*.93,-s*.27]),[s*.6,s*.08,s*.1,col2,0,s*1.26,-s*.24],[s*.6,s*.4,.06,L,0,s*.55,-s*.43],[s*1.12,s*.1,s*.87,0x2a1408,0,s*.15,0],
+        [s*.2,s*.2,.08,C_GOLD,0,s*.15,-s*.44],..._row(3,i=>[.2,.4,.2,col2,0,s*(.9-i*.25),s*.45]),..._mir(.15,.25,.15,C_BONE,s*.55,s*1.1,0),
+        ..._mir(.14,.2,.12,C_BONE,s*.6,s*1.4+.42,s*.1),..._mir(.14,.2,.12,C_BONE,s*.35,s*1.55+.42,-s*.05),..._mir(s*.2,s*.5,s*.22,c,s*.68,s*.5,0),..._mir(.12,.2,.12,C_BONE,s*.68,s*.2,-.05)];
+    case 1:return [[.3,.08,.08,C_GOLD,0,s*.56,-s*.84],..._mir(.08,.08,.06,0x200010,s*.08,s*.68,-s*.84),..._row(4,i=>[.2,.35,.2,col2,0,s*.95,s*(-.3+i*.25)]),[.18,.18,s*.5,col2,0,s*.6,s*.7],[.26,.26,.26,C_BONE,0,s*.62,s*.98],
+        ..._mir(s*.4,s*.12,s*.5,C_IRON,s*.5,s*.9,-s*.1),..._mir(.1,.1,.1,C_GOLD,s*.5,s*.98,-s*.1),..._row(4,i=>[.08,.14,.06,C_BONE,-s*.12+i*s*.08,s*.58,-s*.84]),..._mir(.12,.2,.12,C_BONE,s*.42,s*1.2,-s*.55),
+        [s*.9,s*.3,.06,L,0,s*.4,-s*.48]];
+    case 2:return [[s*.3,s*.3,.08,e,0,s*.7,-s*.36],[s*.4,s*.4,.05,0x2a2a2a,0,s*.7,-s*.355],..._mir(.1,s*.5,.1,0xaa2020,s*.3,s*.6,-s*.36),..._mir(s*.4,s*.2,s*.5,C_IRON,s*.5,s*1.2,0),
+        [s*.34,s*.34,.1,C_IRON,s*.5,s*.8,-s*.1],[s*.34,s*.34,.1,C_IRON,s*.5,s*.8,-s*.45],..._mir(.2,.5,.2,0xd8d0c0,s*.3,s*1.75,0),[s*.92,s*.08,s*.72,0xd0a020,0,s*.2,0],
+        ..._mir(s*.32,s*.14,s*.32,C_IRON,s*.2,s*.36,-.02),[s*.3,s*.12,.08,0x2a2a2a,0,s*1.2,-s*.26],..._row(3,i=>[.1,.1,.06,0xd0a020,-s*.2+i*s*.2,s*1.0,-s*.36]),[.12,.3,.12,0x2a2a2a,-s*.5,s*.45,0]];
+    case 3:return [[s*.7,s*.12,s*.7,C_GOLD,0,s*1.66,0],..._row(5,i=>[.14,.3,.14,C_GOLD,-s*.28+i*s*.14,s*1.8,-s*.28]),[.2,.2,.1,0xff3020,0,s*1.7,-s*.36],
+        ..._row(6,i=>[.14,.24,.08,C_BONE,-s*.25+i*s*.1,s*.83,-s*.66]),[.22,.4,.05,0x083008,0,s*1.05,-s*.73],[s*.7,s*.1,.12,col2,0,s*1.32,-s*.64],
+        ..._mir(.3,.3,.12,e,s*.45,s*1.25,-s*.62),..._row(4,i=>[.16,s*.4,.16,col2,-s*.36+i*s*.24,s*.3,s*.1]),..._mir(.2,s*.6,s*.6,col2,s*.68,s*.95,0),[s*.5,s*.3,.06,0x4a4acc,-s*.3,s*.6,-s*.66]];
+    case 4:return [[s*.25,s*.25,.06,e,0,s*.75,-s*.27],[s*.42,s*.1,.08,0x202020,0,s*1.42,-s*.21],..._mir(.15,.4,.15,C_BONE,s*.47,s*1.25,0),[s*.92,s*.1,s*.52,0x2a1a0a,0,s*.25,0],[.24,.2,.08,C_GOLD,0,s*.25,-s*.27],
+        ..._mir(.1,.2,.1,C_BONE,s*.17,s*1.6+.3,-s*.05),..._mir(s*.24,s*.14,s*.24,C_IRON,s*.17,s*.36,-.02),..._row(3,i=>[s*.7,.06,.08,col2,0,s*(.45+i*.12),-s*.26]),
+        ..._mir(.08,s*.9,.12,0x101808,s*1.0,s*.9,s*.16),..._mir(s*.2,s*.5,s*.2,d.col,s*.58,s*.7,0),..._mir(s*.24,s*.16,s*.24,e,s*.58,s*.4,0)];
+    case 5:return [..._row(3,i=>[s*.72,.06,s*.1,0xcc6060,0,s*.91,s*(-.2+i*.2)]),[.08,s*.42,s*.72,0xcc6060,0,s*.7,0],[s*.15,s*.15,s*.6,0x222222,0,s*.2,-s*.8],[s*.2,s*.2,.08,C_IRON,0,s*.2,-s*1.1],
+        ..._row(4,i=>[.1,.16,.06,C_BONE,-s*.15+i*s*.1,s*.14,-s*.61]),...[-.4,0,.4].flatMap(z=>_mir(s*.16,s*.12,s*.16,0x666655,s*.7,s*.42,s*z)),
+        ...[-.4,0,.4].flatMap(z=>_mir(s*.3,s*.08,s*.1,0x3a3a2a,s*.86,s*.44,s*z)),..._mir(.06,s*.4,.06,0x222222,s*.25,s*1.1,s*.2),..._mir(.14,.14,.14,0xff3020,s*.25,s*1.32,s*.2),
+        [s*1.42,s*.08,s*1.22,0xd0a020,0,s*.48,0],..._mir(.2,.2,.1,d.eye,s*.45,s*.35,-s*.6)];
+    case 6:return [[s*.92,.1,s*.62,e,0,s*.06,0],[s*.3,s*.3,.05,e,0,s*.9,-s*.31],[s*.14,s*.14,.06,0x082008,0,s*.9,-s*.32],..._mir(s*.3,s*.14,s*.5,col2,s*.42,s*1.36,0),
+        [s*.5,.1,.1,0xdddddd,s*.86,s*1.52,0],[s*.3,.1,.1,0xdddddd,s*1.0,s*1.6,0],[.14,.14,.14,e,s*.6,s*1.52,0],[.06,s*1.0,s*.62,col2,0,s*.6,0],
+        ..._row(4,i=>[s*.2,.06,.04,0x1a2a08,0,s*(.3+i*.14),-s*.31]),[s*.36,s*.12,.06,0x0a1404,0,s*1.42,-s*.19],..._mir(s*.14,s*.5,s*.14,col2,s*.5,s*.9,0),..._mir(.12,.12,.12,C_BONE,s*.5,s*.62,0)];
+    case 7:return [[s*.6,.06,s*.4,0xb0a070,0,s*.55,0],[s*.5,.06,s*.36,0xb0a070,0,s*1.0,0],[.1,s*1.0,.12,0xb0a070,0,s*.62,s*.19],..._row(5,i=>[.08,.12,.05,C_BONE,-s*.12+i*s*.06,s*1.2,-s*.2]),
+        ..._row(3,i=>[.12,.26+i%2*.1,.12,0xffa020,-s*.1+i*s*.1,s*1.66,0]),..._mir(.26,.4,.26,0xffb020,s*.35,s*.36,0),..._mir(.14,.2,.14,0xffff80,s*.35,s*.56,0),
+        ..._mir(.08,.08,.06,0x2a1000,s*.09,s*1.3,-s*.19),[s*.2,s*.2,.06,0xffa020,0,s*.8,-s*.19],..._mir(s*.16,s*.1,s*.16,0xb0a070,s*.35,s*1.02,0),..._mir(s*.17,s*.08,s*.2,0xb0a070,s*.12,s*.42,0)];
+    case 8:return [..._mir(.18,.4,.18,col2,s*.3,s*1.65,0),..._mir(.1,.16,.1,C_BONE,s*.3,s*1.65+.28,0),..._row(5,i=>[.1,.18,.06,C_BONE,-s*.16+i*s*.08,s*.9,-s*.57]),[s*.44,s*.06,.1,col2,0,s*.74,-s*.56],
+        ..._mir(s*.15,s*.15,s*.4,col2,s*.6,s*.8,-s*.2),..._mir(.1,.14,.1,C_BONE,s*.6,s*.8,-s*.42),[s*.5,s*.1,.08,col2,0,s*1.26,-s*.56],[s*.8,s*.12,s*.8,col2,0,s*.42,0],
+        ..._row(3,i=>[.14,s*.3,.14,col2,-s*.3+i*s*.3,s*.3,s*.1]),[s*.3,s*.3,.06,0x4a4acc,s*.3,s*1.3,-s*.56]];
+    case 9:return [[s*.2,s*.2,.1,0xff4000,0,s*1.74,-s*.42],[s*.26,s*.26,.06,0x200404,0,s*1.74,-s*.41],..._row(5,i=>[.14,.24,.08,C_BONE,-s*.36+i*s*.18,s*1.16,-s*.43]),
+        ..._row(3,i=>[s*1.32,.1,s*1.02,col2,0,s*(.5+i*.3),0]),..._mir(.2,.3,.18,C_BONE,s*.72,s*2.0+.5,0),..._mir(s*.3,s*.8,s*.3,d.col,s*.8,s*.8,0),..._mir(s*.34,s*.2,s*.34,col2,s*.8,s*.35,0),
+        [s*.4,s*.4,.08,0xff4000,0,s*.7,-s*.52],[s*.5,s*.5,.06,0x200404,0,s*.7,-s*.51],..._mir(.1,s*.6,.1,C_IRON,s*.5,s*.9,-s*.52),[s*1.02,s*.08,s*.82,col2,0,s*1.87,0]];
+    default:return [[s*1.3,s*1.2,.12,0x400000,0,s*.7,s*.42],[s*1.3,.1,.14,C_GOLD,0,s*.12,s*.42],[s*.2,s*.2,.08,e,0,s*1.0,-s*.41],[s*.3,s*.3,.05,C_GOLD,0,s*1.0,-s*.405],
+        ..._mir(.15,.4,.15,e,s*.62,s*1.3,0),[s*.2,s*.2,.08,0xe0d8c0,0,s*.3,-s*.36],[s*1.12,s*.1,s*.72,0x2a1408,0,s*.3,0],[s*.47,s*.1,.08,0x100000,0,s*1.47,-s*.2],
+        [.16,s*1.3,.04,e,s*.9,s*.9,-.06],[.4,.12,.3,C_GOLD,s*.9,s*.36,0],..._mir(s*.22,s*.5,s*.22,col2,s*.68,s*.6,0),..._mir(s*.26,s*.14,s*.26,C_IRON,s*.68,s*.34,0),..._mir(s*.27,s*.16,s*.27,C_IRON,s*.2,s*.38,-.02)];
+    }
+}
 
 // ===== ENTITY FACTORIES =====
 function mkEnemy(type,x,z){
@@ -1373,6 +1563,7 @@ function mkEnemy(type,x,z){
         legR=mkBoxMesh(0.2,0.45,0.2,0x2a3a12);legR.position.set(0.12,0.3,0);mesh.add(legR);
     }
 
+    if(ENEMY_DETAIL[type])_addDetail(mesh,type,ENEMY_DETAIL[type]); // [v2]
     mesh.position.set(x,0,z);mesh.scale.set(0.01,0.01,0.01);
     mesh.traverse(c=>{if(c.isMesh)c.castShadow=false;});
     mesh.add(mkBlobShadow(d.r*0.95));
@@ -1553,6 +1744,7 @@ function mkBoss(idx,x,z){
         legR=mkBoxMesh(s*0.25,s*0.5,s*0.25,col2);legR.position.set(s*0.2,s*0.2,0);mesh.add(legR);
     }
 
+    {const bi=Math.min(idx,10);_addDetail(mesh,'boss'+bi,()=>bossDetail(bi,s,d,col2));} // [v2]
     mesh.position.set(x,0,z);mesh.scale.set(0.01,0.01,0.01);
     mesh.traverse(c=>{if(c.isMesh)c.castShadow=false;});
     mesh.add(mkBlobShadow(d.r*1.25));
@@ -2261,6 +2453,7 @@ function update(dt){
     if(state==='menu'){if(clicked){initAudio();startMusic();startGame();}clicked=false;return;}
     if(state==='dead'||state==='won'){clicked=false;return;}
     clicked=false;
+    updateScenery(dt); // [v2] flickering props + ambient specks
     if(paused)return;
     if(hitPause>0){hitPause-=dt;renderer.render(scene,camera);return;}
     gameTime+=dt;
