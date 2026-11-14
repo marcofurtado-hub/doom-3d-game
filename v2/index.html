@@ -267,7 +267,7 @@ body.mobile #crosshair{top:calc(50% - 29px)}
 <script type="module">
 import * as THREE from 'three';
 // v2 = the v1 game, untouched, plus a graphics layer: richer low-res textures and a new look every wave.
-import { biomeTextures, loadAssets } from './js/textures.js';
+import { biomeTextures, loadAssets, skyDome } from './js/textures.js';
 await loadAssets(new URL('./assets/', import.meta.url).href);
 let _themeFog = 0x000000;
 
@@ -474,32 +474,150 @@ mkWall(WALL_T,WALL_H,AH, AW/2,WALL_H/2,0);   // east
 
 // Inner maze walls (symmetric layouts)
 let innerWalls=[], innerWallMeshes=[];
-const MAZE_LAYOUTS=[ // [v2] one arena shape per wave. h = wall height (default full), nm = no mirroring
-    // 0 Infernal Keep: the v1 original
-    [{x:7,z:0,w:1,d:6},{x:18,z:-4,w:2,d:2},{x:5,z:-10,w:2,d:2},{x:20,z:10,w:2,d:2}],
-    // 1 Tech Hell: pillar forest
-    [{x:6,z:5,w:1.5,d:1.5},{x:12,z:5,w:1.5,d:1.5},{x:18,z:5,w:1.5,d:1.5},{x:6,z:11,w:1.5,d:1.5},{x:12,z:11,w:1.5,d:1.5},{x:18,z:11,w:1.5,d:1.5},
-     {x:12,z:0,w:1.5,d:1.5},{x:19,z:0,w:1.5,d:1.5},{x:0,z:8,w:1.5,d:1.5}],
-    // 2 Blood Cathedral: nave with colonnades, low pews and an altar block
-    [{x:6,z:6,w:6,d:1},{x:17,z:6,w:6,d:1},{x:21,z:0,w:1,d:5},{x:6,z:11,w:5,d:1,h:1.5},{x:14,z:11,w:5,d:1,h:1.5},{x:11,z:1.5,w:3,d:1,h:1.5}],
-    // 3 Void Arena: a few big slabs of different heights
-    [{x:10,z:7,w:5,d:4,h:2},{x:19,z:0,w:2,d:6},{x:0,z:12,w:6,d:2,h:1.6},{x:20,z:12,w:2,d:2,h:3.2}],
-    // 4 Cryo Lab: long lanes
-    [{x:8,z:4,w:10,d:1},{x:8,z:10,w:10,d:1},{x:19,z:7,w:1,d:5},{x:0,z:7,w:1,d:3,h:2},{x:21,z:13,w:2,d:2,h:2.4}],
-    // 5 Ash Wastes: broken ruins, asymmetric, every piece a different height
-    [{x:-15,z:-8,w:5,d:1,h:3,nm:1},{x:-13,z:-5.5,w:1,d:4,h:1.6,nm:1},{x:9,z:-10,w:1,d:5,h:4,nm:1},{x:12,z:-8,w:5,d:1,h:2,nm:1},
-     {x:-6,z:9,w:6,d:1,h:2.4,nm:1},{x:-9,z:11,w:1,d:3,h:4.5,nm:1},{x:16,z:7,w:3,d:3,h:1.6,nm:1},{x:5,z:6,w:2,d:2,h:3.2,nm:1},
-     {x:-18,z:4,w:2,d:2,h:2,nm:1},{x:19,z:-2,w:1,d:4,h:3.5,nm:1},{x:-4,z:-11,w:3,d:1,h:1.6,nm:1},{x:0,z:-6,w:2,d:1,h:1.5,nm:1}],
-    // 6 Bone Mire: dense maze
-    [{x:4,z:4,w:1,d:4},{x:9,z:0,w:4,d:1},{x:13,z:5,w:1,d:5},{x:18,z:2,w:4,d:1},{x:20,z:10,w:3,d:1},{x:8,z:11,w:5,d:1,h:2}],
+// [v2] one place per wave. Piece fields: h = height (default full), t = decor type, inv = collider with no wall
+// mesh (the decor draws it), ghost = decor only, nm = not mirrored.
+const _forestLayout=(()=>{
+    let sd=11;const r=()=>(sd=(sd*16807)%2147483647)/2147483647;
+    const out=[{x:-16,z:-9,w:5,d:4,t:'cabin',nm:1}];
+    const ok=(x,z,m)=>!(Math.abs(x)<4&&Math.abs(z)<4)&&out.every(o=>Math.abs(o.x-x)>m+o.w/2||Math.abs(o.z-z)>m+o.d/2);
+    const put=(n,mk,m)=>{for(let i=0,t=0;i<n&&t<600;t++){const x=Math.round((r()-.5)*420)/10,z=Math.round((r()-.5)*270)/10;if(ok(x,z,m)){out.push({x,z,nm:1,...mk(r())});i++;}}};
+    put(30,()=>({w:.9,d:.9,t:'tree',inv:1}),2.3);
+    put(6,q=>({w:1.2+q,d:1+q*.6,h:.8+q*.8,t:'rock',inv:1}),1.8);
+    put(5,q=>q>.5?{w:3,d:.7,h:.7,t:'log',inv:1}:{w:.7,d:3,h:.7,t:'log',inv:1},2);
+    put(12,()=>({w:.4,d:.4,t:'mush',ghost:1}),.8);
+    return out;
+})();
+const _desk=(x,z)=>({x,z,w:2.2,d:1,h:.85,t:'desk',inv:1});
+const MAZE_LAYOUTS=[
+    // 0 OFFICE: cubicle rows
+    [{x:7,z:4,w:7,d:.5,h:1.7},{x:10.5,z:6,w:.5,d:3.5,h:1.7},_desk(5.5,5.1),_desk(8.6,5.1),
+     {x:17,z:4,w:7,d:.5,h:1.7},_desk(15.5,5.1),_desk(18.6,5.1),
+     {x:7,z:11,w:7,d:.5,h:1.7},_desk(6,12.1),{x:17,z:11,w:7,d:.5,h:1.7},{x:13.5,z:13,w:.5,d:3.5,h:1.7},_desk(17.5,12.1),
+     {x:13,z:0,w:1.5,d:1.5},{x:21,z:0,w:1.2,d:1,h:1.1,t:'copier',inv:1},{x:0,z:9,w:.8,d:.8,h:.6,t:'plant',inv:1},{x:21.5,z:14,w:.8,d:.8,h:.6,t:'plant',inv:1}],
+    // 1 BUTCHER: counters, meat rails, cold rooms
+    [{x:8,z:5,w:8,d:1.2,h:1,t:'counter'},{x:19,z:4,w:1.2,d:6,h:1,t:'counter'},
+     {x:11,z:11,w:14,d:.2,t:'rail',ghost:1},{x:5,z:11,w:1,d:1,t:'carcass',inv:1},{x:9,z:11,w:1,d:1,t:'carcass',inv:1},{x:13,z:11,w:1,d:1,t:'carcass',inv:1},{x:17,z:11,w:1,d:1,t:'carcass',inv:1},
+     {x:21,z:13.5,w:3,d:3},{x:13.5,z:0,w:1.4,d:1.4,h:.9,t:'block',inv:1},{x:0,z:7,w:1,d:1,t:'carcass',inv:1}],
+    // 2 BANK: teller line, columns, vaults
+    [{x:9,z:9,w:12,d:1,h:1.2,t:'teller'},{x:20,z:0,w:1,d:5,h:1.2,t:'teller'},
+     {x:6,z:4,w:1.4,d:1.4,t:'column'},{x:13,z:4,w:1.4,d:1.4,t:'column'},{x:20,z:6,w:1.4,d:1.4,t:'column'},
+     {x:0,z:13.5,w:6,d:3,t:'vault'},{x:5.5,z:13.5,w:1.2,d:.8,h:.5,t:'gold',inv:1},{x:20,z:12.5,w:1.2,d:.8,h:.5,t:'gold',inv:1},{x:12,z:13,w:.8,d:1.2,h:.5,t:'gold',inv:1}],
+    // 3 TOWN SQUARE: fountain, bandstand, benches, lamps, trees, parked cars, hedges
+    [{x:0,z:9,w:4,d:4,h:.7,t:'fountain',inv:1,nm:1},{x:0,z:-9,w:4,d:4,h:.6,t:'stand',inv:1,nm:1},
+     {x:6,z:4,w:2,d:.7,h:.5,t:'bench',inv:1},{x:4.5,z:11,w:.7,d:2,h:.5,t:'bench',inv:1},
+     {x:9,z:7.5,w:.5,d:.5,t:'lamp',inv:1},{x:21,z:13.5,w:.5,d:.5,t:'lamp',inv:1},{x:15,z:0,w:.5,d:.5,t:'lamp',inv:1},
+     {x:14,z:11,w:.9,d:.9,t:'tree',inv:1},{x:21,z:5,w:.9,d:.9,t:'tree',inv:1},
+     {x:-15,z:-5,w:4,d:1.9,h:1.3,t:'car',inv:1,nm:1},{x:17,z:6.5,w:1.9,d:4,h:1.3,t:'car',inv:1,nm:1},{x:12,z:-12,w:4,d:1.9,h:1.3,t:'car',inv:1,nm:1},
+     {x:9,z:14,w:7,d:1,h:1.2},{x:22,z:0,w:1,d:5,h:1.2}],
+    // 4 FOREST: scattered trees, rocks, fallen logs, a cabin
+    _forestLayout,
+    // 5 DUNGEON: maze with barred cells
+    [{x:4,z:4,w:1,d:4},{x:9,z:0,w:4,d:1},{x:13,z:5,w:1,d:5},{x:18,z:2,w:4,d:1},{x:20,z:10,w:3,d:1},
+     {x:8,z:11,w:5,d:.5,h:3.2,t:'bars',inv:1},{x:16.5,z:12.5,w:.5,d:5,h:3.2,t:'bars',inv:1},
+     {x:0,z:10,w:.8,d:.8,h:.8,t:'brazier',inv:1},{x:22,z:6,w:.8,d:.8,h:.8,t:'brazier',inv:1},
+     {x:11,z:7,w:1,d:1,t:'skulls',ghost:1},{x:5,z:13.5,w:1,d:1,t:'skulls',ghost:1},{x:20,z:13.5,w:1,d:1,t:'skulls',ghost:1}],
 ];
+// --- [v2] voxel decor for the pieces above. a(...) adds a lit box, g(...) a glowing one, in piece-local
+// coordinates (x along the piece's long side). L/T = long/short footprint, H = height, q = per-piece random.
+const GOLD=0xe0b030,IRON=0x40444c,DARK=0x202024;
+let _decorIdx=0;
+const DECOR={
+    desk(a,g,L,T,H,q){
+        a(L,.08,T,0x7a5636,0,H-.04,0);a(.08,H-.08,T-.1,0x3a3a40,-L/2+.06,(H-.08)/2,0);a(.08,H-.08,T-.1,0x3a3a40,L/2-.06,(H-.08)/2,0);a(L-.2,.5,.05,0x3a3a40,0,H-.35,-T/2+.05);
+        a(.56,.4,.06,0x16161a,-.4,H+.34,-.2);g(.48,.32,.02,q>.5?0x7fc8ff:0xff5040,-.4,H+.34,-.16);a(.1,.14,.1,0x16161a,-.4,H+.07,-.2);
+        a(.44,.03,.16,0x2a2a30,-.4,H+.015,.12);a(.3,.06,.24,0xe8e4d8,.5,H+.03,0);a(.1,.14,.1,0xc03020,.15,H+.07,-.25);
+        a(.5,.08,.5,0x24282e,0,.5,T/2+.5);a(.5,.6,.08,0x24282e,0,.85,T/2+.75);a(.08,.46,.08,0x101012,0,.25,T/2+.5);
+    },
+    plant(a){a(.5,.5,.5,0x8a4a30,0,.25,0);a(.9,.5,.9,0x2a4a2c,0,.75,0);a(.6,.5,.6,0x3a5a34,.05,1.2,0);a(.3,.4,.3,0x5a3a24,0,1.6,0);},
+    copier(a,g,L,T,H){a(L,H*.8,T,0xc8c8c0,0,H*.4,0);a(L+.06,.1,T+.06,0x404048,0,H*.8+.05,0);a(L*.8,.08,T*.7,0xd8d8d0,0,H*.9+.04,0);g(.1,.06,.02,0x40ff60,L*.3,H*.6,T/2+.01);a(L*.6,.04,.3,0xe8e4d8,0,H*.3,T/2+.15);},
+    counter(a,g,L,T,H){
+        for(let i=-L/2+.8;i<L/2-.4;i+=1.6){a(.6,.22,.4,0xa83030,i,H+.11,0);a(.2,.24,.2,0xe8c0b0,i+.25,H+.12,.05);a(.9,.01,.6,0x700808,i+.5,H+.006,.1);a(.28,.02,.16,0xc0c4c8,i+.75,H+.03,-.15);a(.14,.04,.05,0x3a2010,i+.95,H+.03,-.15);}
+    },
+    rail(a,g,L){a(L,.12,.12,0x50545c,0,4.6,0);a(.15,4.6,.15,IRON,-L/2,2.3,0);a(.15,4.6,.15,IRON,L/2,2.3,0);},
+    carcass(a){
+        a(.05,1,.05,0x80848c,0,4.1,0);a(.8,1.9,.5,0x9c3434,0,2.55,0);a(.6,.2,.4,0xd8a898,0,3.6,0);
+        for(let i=0;i<5;i++)a(.6,.07,.52,0xe2b8a8,0,1.95+i*.3,0);
+        a(.22,.5,.22,0x8a2828,-.22,1.35,0);a(.22,.5,.22,0x8a2828,.22,1.35,0);a(.1,.12,.1,0xf0e8d8,-.22,1.05,0);a(.1,.12,.1,0xf0e8d8,.22,1.05,0);a(.9,.02,.9,0x600808,0,.012,0);
+    },
+    block(a,g,L,T,H){a(L,H,T,0x8a6238,0,H/2,0);a(L+.04,.1,T+.04,0x5a3a20,0,H-.25,0);a(.5,.34,.04,0xc8ccd0,.1,H+.17,0);a(.3,.08,.06,0x3a2010,-.3,H+.3,0);a(.7,.01,.6,0x800808,0,H+.006,0);},
+    teller(a,g,L,T,H){
+        a(L+.1,.08,T+.2,0x3a2414,0,H+.04,0);a(L,.08,.1,GOLD,0,H+1.4,0);a(L,.03,.03,GOLD,0,H+.7,0);
+        for(let i=-L/2+.05;i<=L/2;i+=1.5){a(.08,1.3,.08,GOLD,i,H+.73,0);if(i+.75<L/2){a(.14,.06,.14,0x3a2414,i+.75,H+.11,.2);g(.2,.1,.2,0x60ff80,i+.75,H+.19,.2);}}
+    },
+    column(a,g,L,T,H){a(L+.4,.4,T+.4,0xd8d0c0,0,.2,0);a(L+.4,.4,T+.4,0xd8d0c0,0,H-.2,0);a(L+.2,.15,T+.2,GOLD,0,.48,0);a(L+.2,.15,T+.2,GOLD,0,H-.48,0);},
+    vault(a,g,L,T,H,q,x,z){
+        const s=z>0?-1:1,f=s*T/2;
+        a(3,3,.2,0x60646c,0,2,f+s*.1);a(2.2,2.2,.2,0x8a8e98,0,2,f+s*.25);a(1.4,.14,.1,GOLD,0,2,f+s*.4);a(.14,1.4,.1,GOLD,0,2,f+s*.4);a(.4,.4,.14,0x30343c,0,2,f+s*.42);
+        for(const bx of [-1.2,1.2])for(const by of [.8,3.2])a(.2,.2,.1,0x30343c,bx,by,f+s*.22);
+        g(.16,.08,.04,0xff3020,1.8,3.2,f+s*.03);
+    },
+    gold(a,g,L,T){for(let i=0;i<3;i++)a(L-.1-i*.3,.16,T-.1-i*.2,i%2?0xf0c020:0xd8a010,0,.08+i*.17,0);},
+    bench(a,g,L,T,H){a(L,.08,T,0x6a4426,0,H,0);a(L,.5,.08,0x6a4426,0,H+.35,-T/2+.04);a(.1,H,T,DARK,-L/2+.2,H/2,0);a(.1,H,T,DARK,L/2-.2,H/2,0);},
+    lamp(a,g){a(.3,.3,.3,DARK,0,.15,0);a(.12,3.4,.12,DARK,0,1.7,0);a(.5,.08,.5,DARK,0,3.72,0);g(.34,.3,.34,0xffb060,0,3.53,0);},
+    tree(a,g,L,T,H,q){
+        const h=3.2+q*1.6,tr=0x3a2a22,f=_decorIdx===4,c1=f?0x12302c:0x2a4a2a,c2=f?0x1c4038:0x3a6030;
+        a(.7,h,.7,tr,0,h/2,0);a(1,.3,1,0x30221c,0,.15,0);
+        if(q<.3){a(1.6,.14,.14,tr,.5,h-.4,0);a(.14,.14,1.4,tr,0,h-.9,-.5);a(.3,.8,.3,tr,0,h+.4,0);a(.14,.5,.14,tr,1.2,h-.1,0);}
+        else{a(2.8,1.1,2.8,c1,0,h+.3,0);a(2,1,2,c2,.2,h+1.3,-.15);a(1.1,.7,1.1,c1,-.1,h+2.1,.1);a(1.2,.6,1.2,c2,1.2,h-.2,.6);}
+        if(f&&q>.6)g(.12,.12,.12,0xff3050,.36,1+q,.36);
+    },
+    fountain(a,g,L,T,H){
+        a(L,H,.4,0x8a8a90,0,H/2,T/2-.2);a(L,H,.4,0x8a8a90,0,H/2,-T/2+.2);a(.4,H,T-.8,0x8a8a90,L/2-.2,H/2,0);a(.4,H,T-.8,0x8a8a90,-L/2+.2,H/2,0);
+        a(L-.8,.1,T-.8,0x501018,0,H-.2,0);a(.6,1.8,.6,0x9a9aa0,0,.9,0);a(1.6,.2,1.6,0x9a9aa0,0,1.8,0);a(.4,.9,.4,0x7a8a7a,0,2.35,0);a(.6,.14,.2,0x7a8a7a,0,2.5,0);
+    },
+    stand(a,g,L,T,H){
+        a(L,H,T,0x7a6a5a,0,H/2,0);
+        for(const sx of [-1,1])for(const sz of [-1,1])a(.2,2.6,.2,0xd8d0c0,sx*(L/2-.2),H+1.3,sz*(T/2-.2));
+        a(L+.6,.2,T+.6,0x6a2020,0,H+2.7,0);a(L*.6,.4,T*.6,0x6a2020,0,H+3,0);a(.3,.4,.3,0x6a2020,0,H+3.4,0);a(L,.12,.08,0xd8d0c0,0,H+.9,-T/2+.2);
+    },
+    car(a,g,L,T,H,q){
+        const c=[0x7a2020,0x20406a,0x6a6a30][(q*3)|0];
+        a(L,.6,T,c,0,.75,0);a(L*.5,.55,T-.2,c,-.2,1.32,0);a(L*.5+.04,.35,T-.4,0x10161e,-.2,1.34,0);a(L*.5-.3,.35,T-.16,0x10161e,-.2,1.34,0);
+        for(const sx of [-1.25,1.25])for(const sz of [-1,1])a(.7,.7,.2,0x101012,sx,.35,sz*T/2);
+        for(const sz of [-.55,.55]){g(.06,.18,.4,0xfff0c0,L/2+.01,.8,sz);g(.06,.14,.3,0xff2010,-L/2-.01,.8,sz);}
+        a(L+.1,.14,T+.06,0x8a8a90,0,.48,0);
+    },
+    log(a,g,L,T,H){a(L,H,T,0x4a3424,0,H/2,0);a(.06,H*.7,T*.7,0xc09a6a,L/2+.02,H/2,0);a(.06,H*.7,T*.7,0xc09a6a,-L/2-.02,H/2,0);a(L*.5,.1,T*.8,0x2a5030,L*.1,H+.04,0);},
+    rock(a,g,L,T,H){a(L,H,T,0x5a5a62,0,H/2,0);a(L*.6,H*.5,T*.6,0x6a6a72,L*.1,H+H*.2,0);a(L*.5,.08,T*.5,0x2a5030,-L*.15,H+.03,0);},
+    mush(a,g,L,T,H,q){const c=q>.5?0x40e0d0:0xff4060;a(.1,.3,.1,0xd8d0c0,0,.15,0);g(.36,.14,.36,c,0,.36,0);a(.06,.2,.06,0xd8d0c0,.25,.1,.15);g(.2,.1,.2,c,.25,.24,.15);},
+    cabin(a,g,L,T,H){
+        a(L+.8,.3,T+.8,0x2a1c14,0,H+.15,0);a(L+.2,.5,T*.6,0x2a1c14,0,H+.55,0);a(1.1,2.2,.1,0x1c120c,.8,1.1,T/2+.04);
+        g(.8,.7,.06,0xffb040,-L*.25,2,T/2+.03);a(1,.1,.1,0x1c120c,-L*.25,2,T/2+.06);a(.1,.9,.1,0x1c120c,-L*.25,2,T/2+.06);a(.5,1.2,.5,0x5a5a62,L*.3,H+.9,0);
+    },
+    bars(a,g,L,T,H){
+        for(let i=-L/2+.17;i<L/2;i+=.35)a(.08,H,.08,IRON,i,H/2,0);
+        a(L,.12,.14,0x30343c,0,H-.1,0);a(L,.12,.14,0x30343c,0,.1,0);a(L,.1,.12,0x30343c,0,H*.5,0);
+    },
+    brazier(a,g,L,T,H){a(.3,H-.2,.3,0x30343c,0,(H-.2)/2,0);a(L,.3,T,IRON,0,H-.15,0);g(L*.6,.4,T*.6,0xff7a20,0,H+.2,0);g(L*.3,.3,T*.3,0xffd040,0,H+.5,0);},
+    skulls(a,g,L,T,H,q){
+        for(let i=0;i<5;i++){const ox=Math.sin(i*2.4+q*6)*.45,oz=Math.cos(i*1.7+q*6)*.45,y=i===4?.39:.13;a(.3,.26,.3,0xe0d8c4,i===4?0:ox,y,i===4?0:oz);}
+        a(.5,.08,.1,0xe0d8c4,.6,.04,.2);a(.1,.08,.5,0xe0d8c4,-.5,.04,-.3);
+    },
+};
+let _decor=[];
+const _decorLit=new THREE.MeshLambertMaterial({vertexColors:true}),_decorGlow=new THREE.MeshBasicMaterial({vertexColors:true});
+function buildDecor(pieces){
+    _decor.forEach(m=>{scene.remove(m);m.geometry.dispose();});_decor=[];
+    const lit=[],glow=[];
+    for(const {def,x,z} of pieces){
+        const fn=DECOR[def.t];if(!fn)continue;
+        const rot=def.d>def.w,L=rot?def.d:def.w,T=rot?def.w:def.d;
+        const mk=arr=>(w,h,d,c,lx,y,lz)=>arr.push(rot?[d,h,w,c,x+lz,y,z+lx]:[w,h,d,c,x+lx,y,z+lz]);
+        const q=Math.abs(Math.sin(x*12.9898+z*78.233)*43758.5453)%1;
+        fn(mk(lit),mk(glow),L,T,def.h||WALL_H,q,x,z);
+    }
+    for(const [parts,mat] of [[lit,_decorLit],[glow,_decorGlow]]){
+        if(!parts.length)continue;
+        const m=new THREE.Mesh(_voxGeo(parts),mat);scene.add(m);_decor.push(m);
+    }
+}
 // One shared Lambert material for all inner walls
 
 const innerWallMat=new THREE.MeshLambertMaterial({map:innerWallTex,color:0xffffff,emissive:0x1a0808});
 function genMaze3D(idx){
     innerWallMeshes.forEach(m=>{scene.remove(m);m.geometry.dispose();});
     innerWallMeshes=[];innerWalls=[];
-    const layout=MAZE_LAYOUTS[(typeof idx==='number'?idx:Math.floor(Math.random()*MAZE_LAYOUTS.length))%MAZE_LAYOUTS.length];
+    const li=(typeof idx==='number'?idx:0)%MAZE_LAYOUTS.length,layout=MAZE_LAYOUTS[li],pieces=[];_decorIdx=li;
     for(const def of layout){
         const positions=[];
         positions.push({x:def.x,z:def.z});
@@ -510,24 +628,33 @@ function genMaze3D(idx){
             if(Math.abs(pos.x)<3&&Math.abs(pos.z)<3)continue;
             if(Math.abs(pos.x)+def.w/2>AW/2-2)continue;
             if(Math.abs(pos.z)+def.d/2>AH/2-2)continue;
+            if(def.t)pieces.push({def,x:pos.x,z:pos.z});
+            if(def.ghost)continue;
             innerWalls.push({x:pos.x,z:pos.z,w:def.w,d:def.d});
+            if(def.inv)continue;
             const wh=def.h||WALL_H;
             const m=new THREE.Mesh(worldBox(def.w,wh,def.d),innerWallMat);
             m.position.set(pos.x,wh/2,pos.z);
             scene.add(m);innerWallMeshes.push(m);
         }
     }
+    buildDecor(pieces);
 }
 // ===== [v2] SCENERY THEMES — one per wave, visuals only =====
+const _spore=(color,size)=>({color,vy:.06,drift:.3,size});
 const THEMES=[
-    {id:'infernal', name:'INFERNAL KEEP',  fog:0x120403, sky:0xffe4c8, ground:0x3a2018, hemi:2.3, ceil:0xffb0a0, wallRep:2, floorTile:2, open:false, prop:{type:'flame',color:0xff7a20,g:[.22,.3,.22],stand:[.14,1.3,.14],y:1.45,gap:6}, amb:{color:0xff8030,vy:.6,drift:.3,size:.07}},
-    {id:'tech',     name:'TECH HELL',      fog:0x030c0c, sky:0xd0ecff, ground:0x14282a, hemi:2.5, ceil:0x90b0ff, wallRep:1, floorTile:4, open:false, prop:{type:'tube',color:0x40ffa0,g:[.1,3,.1],y:2.2,gap:5}, amb:{color:0x60ffb0,vy:-.15,drift:.1,size:.05}},
-    {id:'cathedral',name:'BLOOD CATHEDRAL',fog:0x0e0508, sky:0xffe0c0, ground:0x30181c, hemi:2.3, ceil:0xffa0a0, wallRep:1, floorTile:4, open:false, prop:{type:'flame',color:0xffc040,g:[.1,.16,.1],stand:[.08,1.6,.08],y:1.68,gap:4}, amb:{color:0xffd080,vy:.12,drift:.15,size:.05}},
-    {id:'void',     name:'VOID ARENA',     fog:0x070312, sky:0xdcc8ff, ground:0x201038, hemi:2.6, ceil:0xb090ff, wallRep:1, floorTile:4, open:true, prop:{type:'float',color:0xb070ff,g:[.4,.4,.4],y:2.6,gap:7}, amb:{color:0xd0b0ff,vy:.03,drift:.05,size:.06}},
-    {id:'cryo',     name:'CRYO LAB',       fog:0x06101a, sky:0xd8f0ff, ground:0x18304a, hemi:2.2, ceil:0x90c8ff, wallRep:1, floorTile:4, open:false, prop:{type:'crystal',color:0x80e0ff,g:[.35,.9,.35],y:.5,gap:5}, amb:{color:0xe0f4ff,vy:-.5,drift:.4,size:.06}},
-    {id:'ash',      name:'ASH WASTES',     fog:0x140a05, sky:0xffd8b0, ground:0x38200c, hemi:2.3, ceil:0xffc090, wallRep:1, floorTile:4, open:true, prop:{type:'flame',color:0xff5a10,g:[.4,.45,.4],stand:[.5,.5,.5],y:.72,gap:9}, amb:{color:0x8a8078,vy:-.35,drift:.5,size:.07}},
-    {id:'bone',     name:'BONE MIRE',      fog:0x070d05, sky:0xe0ffd0, ground:0x1a2a12, hemi:2.3, ceil:0xa0ff90, wallRep:1, floorTile:4, open:true, prop:{type:'flame',color:0x70ff30,g:[.2,.3,.2],stand:[.12,1.2,.12],y:1.35,gap:7}, amb:{color:0x90ff50,vy:.2,drift:.3,size:.06}},
+    {id:'office',  name:'ESCRITÓRIO', fog:0x120a14, sky:0xd0d4ff, ground:0x40242c, hemi:2.3, tint:0xc8c8ff, prop:{type:'flame',color:0xe8f0ff,g:[.6,.1,.3],y:4.3,gap:6}, amb:_spore(0xd8d8e8,.07)},
+    {id:'butcher', name:'AÇOUGUE',    fog:0x1a0608, sky:0xffd8d0, ground:0x4a1818, hemi:2.3, tint:0xff9c9c, prop:{type:'tube',color:0xff3050,g:[.12,2,.12],y:3,gap:6}, amb:_spore(0xffc0c0,.06)},
+    {id:'bank',    name:'BANCO',      fog:0x10100a, sky:0xfff0d0, ground:0x2a3020, hemi:2.3, tint:0xffe0a0, prop:{type:'flame',color:0xffc040,g:[.14,.2,.14],stand:[.1,1.8,.1],y:1.9,gap:5}, amb:_spore(0xe8e0c8,.06)},
+    {id:'square',  name:'PRACINHA',   fog:0x180a0e, sky:0xe0d0ff, ground:0x402028, hemi:2.2, tint:0xffffff, prop:null, amb:_spore(0xe0e0e8,.08)},
+    {id:'forest',  name:'FLORESTA',   fog:0x080e16, sky:0xc0d8ff, ground:0x182830, hemi:2.0, tint:0xa0b8ff, prop:{type:'float',color:0x40e0d0,g:[.14,.14,.14],y:2.2,gap:4}, amb:_spore(0xc8e8f0,.09)},
+    {id:'dungeon', name:'CALABOUÇO',  fog:0x140a06, sky:0xffe0c0, ground:0x302018, hemi:2.1, tint:0xffb080, prop:{type:'flame',color:0xff7a20,g:[.22,.3,.22],stand:[.14,1.3,.14],y:1.45,gap:6}, amb:_spore(0xe0c8b0,.06)},
 ];
+// Doomsday sky: a dome with storm clouds and red lightning, visible in every place (the roofs are gone)
+const _sky=new THREE.Mesh(new THREE.SphereGeometry(160,24,10,0,Math.PI*2,0,Math.PI/2),new THREE.MeshBasicMaterial({map:skyDome(),side:THREE.BackSide,fog:false,depthWrite:false}));
+_sky.position.y=-14;_sky.renderOrder=-1;_sky.frustumCulled=false;scene.add(_sky);
+const _skyTint=new THREE.Color(1,1,1);
+let _hemiBase=2.2,_flashT=5,_flash=0;
 let themeName='';
 // --- glowing voxel props along the outer walls (one or two instanced meshes per theme)
 let _props=null;
@@ -576,6 +703,16 @@ let _amb={vy:0.3,drift:0.2};
 function updateScenery(dt){
     const t=performance.now()*0.001;
     if(_props&&_props.type!=='tube'&&_props.type!=='crystal')updateProps(t);
+    // lightning: every few seconds the sky and the light jump, twice in quick succession
+    _sky.rotation.y+=dt*0.008;
+    _flashT-=dt;
+    if(_flashT<0){_flash=1;_flashT=_flashT<-0.18?3+Math.random()*7:_flashT;}
+    if(_flash>0||hemiLight.intensity!==_hemiBase){
+        _flash=Math.max(0,_flash-dt*7);
+        const f=_flash*_flash;
+        hemiLight.intensity=_hemiBase*(1+0.9*f);
+        _sky.material.color.copy(_skyTint).multiplyScalar(1+1.6*f);
+    }
     for(let i=0;i<AMB_N;i++){
         const k=i*3,sd=_ambSeed[i];
         _ambPos[k]+=Math.sin(t*0.7+sd*40)*_amb.drift*dt;
@@ -599,18 +736,17 @@ function applyTheme(i){
         mat.emissiveIntensity=t.emissiveMap?0.85:1;
         mat.needsUpdate=true;
     };
-    setMat(floorMat,tx.floor,AW/th.floorTile,AH/th.floorTile,0x000000);
-    setMat(wallMat,tx.wall,th.wallRep,th.wallRep,0x140808);
-    innerWallMat.map=wallMat.map;innerWallMat.emissiveMap=wallMat.emissiveMap;
-    innerWallMat.emissive.copy(wallMat.emissive);innerWallMat.emissiveIntensity=wallMat.emissiveIntensity;innerWallMat.needsUpdate=true;
-    ceilMat.color.setHex(th.ceil);
-    ceiling.visible=!th.open;          // some themes are open to the sky
+    setMat(floorMat,tx.floor,AW/4,AH/4,0x000000);
+    setMat(wallMat,tx.wall,1,1,0x140808);
+    setMat(innerWallMat,tx.inner,1,1,0x140808);
+    ceiling.visible=false;             // every place lost its roof
+    _skyTint.setHex(th.tint);_sky.material.color.copy(_skyTint);
     buildProps(th);
     _ambMat.color.setHex(th.amb.color);_ambMat.size=th.amb.size;_amb=th.amb;
     _themeFog=th.fog;
     scene.fog.color.setHex(th.fog);
     renderer.setClearColor(th.fog);
-    hemiLight.color.setHex(th.sky);hemiLight.groundColor.setHex(th.ground);hemiLight.intensity=th.hemi;
+    hemiLight.color.setHex(th.sky);hemiLight.groundColor.setHex(th.ground);hemiLight.intensity=_hemiBase=th.hemi;
 }
 applyTheme(0);
 if(new URLSearchParams(location.search).has('debug')){window.__theme=applyTheme;window.__maze=i=>genMaze3D(i);window.__wep=i=>{unlockedWeapons[i]=true;pl.wep=i;};window.__god=()=>{pl.maxHp=pl.hp=1e6;};window.__spawn=(t,x,z)=>{const e=mkEnemy(t,x,z);e.spd=0;e.dmg=0;enemies.push(e);return e;};window.__boss=(i,x,z)=>{const e=mkBoss(i,x,z);e.spd=0;e.dmg=0;e.fRate=1e9;enemies.push(e);return e;};window.__look=(a,p)=>{pl.angle=a;pl.pitch=p||0;};window.__clear=()=>{enemies.forEach(e=>{if(e.mesh)scene.remove(e.mesh);});enemies.length=0;toSpawn=0;};Object.defineProperty(window,"__pl",{get:()=>pl});}
@@ -2100,7 +2236,7 @@ function startGame(){
     pl.shieldT=0;pl.rageT=0;pl.shotBufT=0;powerupT=16+Math.random()*10;
     for(let w=2;w<=WC;w++)ammo[w]=0;
     reloading=false;reloadT=0;
-    genMaze3D();
+    genMaze3D(0);
     $start.style.display='none';$over.style.display='none';$hud.style.display='block';$doomHud.classList.remove('hidden');$crosshair.style.display='block';
     document.body.classList.add('playing');
     // Try to (re)grab pointer lock when restarting in a user gesture
