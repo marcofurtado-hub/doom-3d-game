@@ -11,11 +11,15 @@ What v2 adds, visuals only:
 - **Richer low-res textures** instead of the 8x8 noise tiles: 64–128px pixel textures with nearest filtering.
   Six themes are drawn procedurally in `js/textures.js` (some with self-lit details such as neon strips and
   stained glass); the Infernal Keep wall and floor are painted images reduced to 64px (`assets/`).
+- **A different wall layout every wave** (seven layouts in rotation). This is the one change that touches play:
+  the cover changes between waves. The first wave uses the original v1 layout.
+- **New voxel gun models** for all nine weapons, same blocky style with more detail. Each gun is merged into
+  one lit mesh plus one glow mesh and cached, so it costs 2 draw calls and switching guns allocates nothing.
 - **World-space wall UVs**, so bricks keep the same size on every wall instead of stretching.
 
 Still one hemisphere light and no post-processing, as in v1, so the performance profile is the same.
 
-`?debug` exposes `window.__theme(n)` to preview a theme.
+`?debug` exposes `window.__theme(n)`, `__maze(n)` and `__wep(n)` for previews.
 
 Checked in headless Chromium: loads, starts, all seven themes apply with no errors. Not checked on a phone
 or a real GPU.
