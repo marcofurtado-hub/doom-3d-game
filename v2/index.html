@@ -490,9 +490,9 @@ const _forestLayout=(()=>{
 const _desk=(x,z)=>({x,z,w:2.2,d:1,h:.85,t:'desk',inv:1});
 const MAZE_LAYOUTS=[
     // 0 OFFICE: cubicle rows
-    [{x:7,z:4,w:7,d:.5,h:1.7},{x:10.5,z:6,w:.5,d:3.5,h:1.7},_desk(5.5,5.1),_desk(8.6,5.1),
-     {x:17,z:4,w:7,d:.5,h:1.7},_desk(15.5,5.1),_desk(18.6,5.1),
-     {x:7,z:11,w:7,d:.5,h:1.7},_desk(6,12.1),{x:17,z:11,w:7,d:.5,h:1.7},{x:13.5,z:13,w:.5,d:3.5,h:1.7},_desk(17.5,12.1),
+    [{x:7,z:4,w:7,d:.5,h:1.3},_desk(5.9,4.75),_desk(8.1,4.75),
+     {x:17,z:4,w:7,d:.5,h:1.3},_desk(15.9,4.75),_desk(18.1,4.75),
+     {x:7,z:11,w:7,d:.5,h:1.3},_desk(7,11.75),{x:17,z:11,w:7,d:.5,h:1.3},_desk(17,11.75),
      {x:13,z:0,w:1.5,d:1.5},{x:21,z:0,w:1.2,d:1,h:1.1,t:'copier',inv:1},{x:0,z:9,w:.8,d:.8,h:.6,t:'plant',inv:1},{x:21.5,z:14,w:.8,d:.8,h:.6,t:'plant',inv:1}],
     // 1 BUTCHER: counters, meat rails, cold rooms
     [{x:8,z:5,w:8,d:1.2,h:1,t:'counter'},{x:19,z:4,w:1.2,d:6,h:1,t:'counter'},
@@ -749,8 +749,37 @@ function applyTheme(i){
     hemiLight.color.setHex(th.sky);hemiLight.groundColor.setHex(th.ground);hemiLight.intensity=_hemiBase=th.hemi;
 }
 applyTheme(0);
-if(new URLSearchParams(location.search).has('debug')){window.__theme=applyTheme;window.__maze=i=>genMaze3D(i);window.__wep=i=>{unlockedWeapons[i]=true;pl.wep=i;};window.__god=()=>{pl.maxHp=pl.hp=1e6;};window.__spawn=(t,x,z)=>{const e=mkEnemy(t,x,z);e.spd=0;e.dmg=0;enemies.push(e);return e;};window.__boss=(i,x,z)=>{const e=mkBoss(i,x,z);e.spd=0;e.dmg=0;e.fRate=1e9;enemies.push(e);return e;};window.__look=(a,p)=>{pl.angle=a;pl.pitch=p||0;};window.__clear=()=>{enemies.forEach(e=>{if(e.mesh)scene.remove(e.mesh);});enemies.length=0;toSpawn=0;};Object.defineProperty(window,"__pl",{get:()=>pl});}
+if(new URLSearchParams(location.search).has('debug')){window.__theme=applyTheme;window.__maze=i=>genMaze3D(i);window.__wep=i=>{unlockedWeapons[i]=true;pl.wep=i;};window.__god=()=>{pl.maxHp=pl.hp=1e6;};window.__spawn=(t,x,z)=>{const e=mkEnemy(t,x,z);e.spd=0;e.dmg=0;enemies.push(e);return e;};window.__boss=(i,x,z)=>{const e=mkBoss(i,x,z);e.spd=0;e.dmg=0;e.fRate=1e9;enemies.push(e);return e;};window.__look=(a,p)=>{pl.angle=a;pl.pitch=p||0;};window.__clear=()=>{enemies.forEach(e=>{if(e.mesh)scene.remove(e.mesh);});enemies.length=0;toSpawn=0;};Object.defineProperty(window,"__pl",{get:()=>pl});window.__en=()=>enemies;}
 
+// [v2] segment vs padded wall box: entry t in [0,1], or -1
+function _segHit(x0,z0,x1,z1,w,pad){
+    const hw=w.w/2+pad,hd=w.d/2+pad,dx=x1-x0,dz=z1-z0;let t0=0,t1=1,a,b;
+    if(Math.abs(dx)<1e-6){if(x0<w.x-hw||x0>w.x+hw)return -1;}
+    else{a=(w.x-hw-x0)/dx;b=(w.x+hw-x0)/dx;if(a>b){const t=a;a=b;b=t;}if(a>t0)t0=a;if(b<t1)t1=b;if(t0>t1)return -1;}
+    if(Math.abs(dz)<1e-6){if(z0<w.z-hd||z0>w.z+hd)return -1;}
+    else{a=(w.z-hd-z0)/dz;b=(w.z+hd-z0)/dz;if(a>b){const t=a;a=b;b=t;}if(a>t0)t0=a;if(b<t1)t1=b;if(t0>t1)return -1;}
+    return t0;
+}
+const _wp={x:0,z:0};
+// If a wall blocks the way from e to (tx,tz), put the best corner to go round it in _wp and return true
+function steerAround(e,tx,tz){
+    let best=null,bt=2;
+    for(const w of innerWalls){const t=_segHit(e.x,e.z,tx,tz,w,e.r*0.9);if(t>=0&&t<bt){bt=t;best=w;}}
+    if(!best)return false;
+    const pad=e.r+0.4;let bc=1e9;
+    for(let i=0;i<4;i++){
+        const cx=best.x+(i&1?1:-1)*(best.w/2+pad),cz=best.z+(i&2?1:-1)*(best.d/2+pad);
+        if(Math.abs(cx)>HW-0.5||Math.abs(cz)>HH-0.5)continue;
+        if(_segHit(e.x,e.z,cx,cz,best,e.r*0.5)>=0)continue;
+        let inside=false;                                                             // corner buried in a neighbouring wall
+        for(const w of innerWalls)if(w!==best&&Math.abs(cx-w.x)<w.w/2+e.r*0.9&&Math.abs(cz-w.z)<w.d/2+e.r*0.9){inside=true;break;}
+        if(inside)continue;
+        const dc=Math.hypot(cx-e.x,cz-e.z);if(dc<0.3)continue;                       // already standing on it
+        const c=dc+Math.hypot(tx-cx,tz-cz)+(_segHit(cx,cz,tx,tz,best,e.r*0.5)>=0?100:0); // prefer corners that see the target
+        if(c<bc){bc=c;_wp.x=cx;_wp.z=cz;}
+    }
+    return bc<1e9;
+}
 // Collision with inner walls (circle vs AABB)
 function colInnerWalls(e){
     for(const w of innerWalls){
@@ -2796,7 +2825,7 @@ function update(dt){
     for(const e of enemies){
         if(!e.alive)continue;
         if(e.spawning){e.spawnT-=dt;const t=Math.max(0,1-(e.spawnT/(e.boss?0.8:0.4)));e.mesh.scale.set(t,t,t);e.mesh.position.set(e.x,0,e.z);if(e.spawnT<=0){e.spawning=false;e.mesh.scale.set(1,1,1);}continue;}
-        const edx=pl.x-e.x,edz=pl.z-e.z,d=Math.hypot(edx,edz);
+        const edx=pl.x-e.x,edz=pl.z-e.z,d=Math.hypot(edx,edz),_px=e.x,_pz=e.z;
         e.angle=Math.atan2(edz,edx);
         e.hitT=Math.max(0,e.hitT-dt);
         if(nukeFrozen){
@@ -2934,6 +2963,19 @@ function update(dt){
             else if(pl.inv<=0&&pl.y<(e.bodyTop||1.7)*0.85){pl.hp-=e.dmg*0.8*dt;pl.hurtT=0.05;if(pl.hp<=0)die();}
         }
         clampA(e);colInnerWalls(e);
+        // [v2] furniture blocks the straight-line chase: if a wall is between this enemy and the player,
+        // walk to the free corner of that wall instead (shortest way round)
+        if(!e.boss&&d>(e.ranged?3:e.r+pl.r+0.5)&&Math.abs(e.kbx)+Math.abs(e.kbz)<0.5){
+            const mx=e.x,mz=e.z;e.x=_px;e.z=_pz;
+            // keep walking to a chosen corner for a moment, so two walls cannot pull the enemy back and forth
+            if(e.wpT>0&&Math.hypot(e.wpx-e.x,e.wpz-e.z)>0.25)e.wpT-=dt;
+            else if(steerAround(e,pl.x,pl.z)){e.wpx=_wp.x;e.wpz=_wp.z;e.wpT=1.5;}
+            else e.wpT=0;
+            if(e.wpT>0){
+                const wx=e.wpx-e.x,wz=e.wpz-e.z,wd=Math.hypot(wx,wz)||1,sp=e.spd*(e.ranged?0.3:1)*dt;
+                e.x+=wx/wd*sp;e.z+=wz/wd*sp;clampA(e);colInnerWalls(e);
+            }else{e.x=mx;e.z=mz;}
+        }
         // Push apart
         for(const o of enemies){if(o===e||!o.alive||o.spawning)continue;const dd=dst(e,o),mn=e.r+o.r;
             if(dd<mn&&dd>0){const f=(mn-dd)*0.5/dd;e.x+=(e.x-o.x)*f;e.z+=(e.z-o.z)*f;}}

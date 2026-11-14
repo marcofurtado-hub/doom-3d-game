@@ -12,6 +12,9 @@ What v2 adds, visuals only:
   counters and vault doors, a fountain, bandstand, parked cars and lamp posts, trees, rocks and a cabin,
   barred cells and braziers. All the furniture of a wave is merged into two meshes (lit + glowing).
   This is the one change that touches play: the cover is different in each place.
+- **Enemies walk round furniture.** v1 monsters chase in a straight line, which the new layouts turn into
+  dead ends (a monster stuck behind a desk means the boss never arrives). When a wall is between a monster and
+  the player it now heads for the free corner of that wall. Speeds, damage and everything else are unchanged.
 - **End-of-the-world sky** over every place (the roofs are gone): a dome with a storm-cloud deck, red
   lightning veins and a glowing horizon, tinted per place, with lightning flashes every few seconds.
   Dark tendrils creep over every wall and pale spores drift in the air.
