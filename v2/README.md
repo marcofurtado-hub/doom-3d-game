@@ -18,6 +18,13 @@ What v2 adds, visuals only:
 - **End-of-the-world sky** over every place (the roofs are gone): a dome with a storm-cloud deck, red
   lightning veins and a glowing horizon, tinted per place, with lightning flashes every few seconds.
   Dark tendrils creep over every wall and pale spores drift in the air.
+- **New weapon and impact sounds**, synthesised in layers instead of single beeps: a bright crack, a noise
+  body that sweeps down, a pitch-dropping low thump for weight and a short room tail, then saturation.
+  Pump and slide clicks on the shotguns and pistol; a launch whoosh for the rocket; a beam hum plus zaps for
+  the lasers; a looping roar for the flamethrower; deep, long explosions and a much bigger nuke; meatier
+  hits, kills and ricochets. Each sound has several variants with slight pitch jitter. Everything goes through
+  a compressor and a small room reverb. The sounds are baked once when audio starts (the pistol and impacts
+  first, the rest spread over the next second), so each shot is a single buffer playback.
 - **World-space wall UVs**, so bricks keep the same size on every wall instead of stretching.
 - **Gun detail pass**: a 16px worn-metal texture over the vertex colours plus extra voxels (vents, rivets,
   hazard stripes, indicator lights). Still 2 draw calls per gun.
