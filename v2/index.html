@@ -749,7 +749,7 @@ function applyTheme(i){
     hemiLight.color.setHex(th.sky);hemiLight.groundColor.setHex(th.ground);hemiLight.intensity=_hemiBase=th.hemi;
 }
 applyTheme(0);
-if(new URLSearchParams(location.search).has('debug')){window.__theme=applyTheme;window.__maze=i=>genMaze3D(i);window.__wep=i=>{unlockedWeapons[i]=true;pl.wep=i;};window.__god=()=>{pl.maxHp=pl.hp=1e6;};window.__spawn=(t,x,z)=>{const e=mkEnemy(t,x,z);e.spd=0;e.dmg=0;enemies.push(e);return e;};window.__boss=(i,x,z)=>{const e=mkBoss(i,x,z);e.spd=0;e.dmg=0;e.fRate=1e9;enemies.push(e);return e;};window.__look=(a,p)=>{pl.angle=a;pl.pitch=p||0;};window.__clear=()=>{enemies.forEach(e=>{if(e.mesh)scene.remove(e.mesh);});enemies.length=0;toSpawn=0;};Object.defineProperty(window,"__pl",{get:()=>pl});window.__en=()=>enemies;}
+if(new URLSearchParams(location.search).has('debug')){window.__theme=applyTheme;window.__maze=i=>genMaze3D(i);window.__wep=i=>{unlockedWeapons[i]=true;pl.wep=i;};window.__god=()=>{pl.maxHp=pl.hp=1e6;};window.__spawn=(t,x,z)=>{const e=mkEnemy(t,x,z);e.spd=0;e.dmg=0;enemies.push(e);return e;};window.__boss=(i,x,z)=>{const e=mkBoss(i,x,z);e.spd=0;e.dmg=0;e.fRate=1e9;enemies.push(e);return e;};window.__look=(a,p)=>{pl.angle=a;pl.pitch=p||0;};window.__clear=()=>{enemies.forEach(e=>{if(e.mesh)scene.remove(e.mesh);});enemies.length=0;toSpawn=0;};Object.defineProperty(window,"__pl",{get:()=>pl});window.__en=()=>enemies;window.__snd=()=>SND;window.__sfx=()=>sfx;}
 
 // [v2] segment vs padded wall box: entry t in [0,1], or -1
 function _segHit(x0,z0,x1,z1,w,pad){
@@ -1081,30 +1081,182 @@ let musicVolume=parseInt(localStorage.getItem('doom3dMusicVol'))||50;
 function initAudio(){
     if(ac)return;
     ac=new(window.AudioContext||window.webkitAudioContext)();
-    mvol=ac.createGain();mvol.gain.value=volume/200;mvol.connect(ac.destination); // SFX bus
+    mvol=ac.createGain();mvol.gain.value=volume/200;mvol.connect(ac.destination); // SFX volume
+    initSfx(); // [v2] baked weapon sounds, compressor and room reverb in front of mvol
     musicBus=ac.createGain();musicBus.gain.value=musicVolume/200;musicBus.connect(ac.destination); // Music bus
 }
 function beep(f,d,t='square',v=0.1){if(!ac)return;const o=ac.createOscillator(),g=ac.createGain();o.type=t;o.frequency.value=f;g.gain.setValueAtTime(v,ac.currentTime);g.gain.exponentialRampToValueAtTime(0.001,ac.currentTime+d);o.connect(g);g.connect(mvol);o.start();o.stop(ac.currentTime+d);}
 function noise(d,v=0.1){if(!ac)return;const bs=ac.sampleRate*d,nb=ac.createBuffer(1,bs,ac.sampleRate),dd=nb.getChannelData(0);for(let i=0;i<bs;i++)dd[i]=(Math.random()*2-1)*Math.pow(1-i/bs,2);const s=ac.createBufferSource(),g=ac.createGain(),f=ac.createBiquadFilter();s.buffer=nb;f.type='lowpass';f.frequency.value=3000;g.gain.setValueAtTime(v,ac.currentTime);g.gain.exponentialRampToValueAtTime(0.001,ac.currentTime+d);s.connect(f);f.connect(g);g.connect(mvol);s.start();s.stop(ac.currentTime+d);}
+// ===== [v2] SOUND ENGINE =====
+// Every effect is synthesised once into AudioBuffers when audio starts (a few variants each), then played as a
+// single BufferSource per shot, so rapid fire costs almost nothing. Layers per gunshot: a bright crack, a
+// band-passed noise body that sweeps down, a pitch-dropping sine thump for weight, and a low room tail; then
+// tanh saturation. All SFX go through a compressor (punch, no clipping) with a short room reverb on a send.
+let _sfxIn=null,_voices=0;
+const SND={};
+function _svf(sr){ // Chamberlin state-variable filter: call s(x,fc,damp), then read .lp/.bp/.hp
+    const o={lp:0,bp:0,hp:0};
+    o.s=(x,fc,q)=>{const f=2*Math.sin(Math.PI*Math.min(fc,sr/6.5)/sr);o.lp+=f*o.bp;o.hp=x-o.lp-q*o.bp;o.bp+=f*o.hp;return o;};
+    return o;
+}
+const _rn=()=>Math.random()*2-1;
+function _bake(dur,fn,loop=0){
+    const sr=ac.sampleRate,n=Math.ceil((dur+loop)*sr),d=new Float32Array(n);
+    fn(d,sr);
+    if(loop){ // crossfade the extra tail into the head so the buffer loops without a click
+        const xf=Math.floor(loop*sr),m=n-xf;
+        for(let i=0;i<xf;i++){const k=i/xf;d[i]=d[i]*k+d[m+i]*(1-k);}
+        const b=ac.createBuffer(1,m,sr);b.getChannelData(0).set(d.subarray(0,m));return _norm(b);
+    }
+    const b=ac.createBuffer(1,n,sr);b.getChannelData(0).set(d);return _norm(b);
+}
+function _norm(b){const d=b.getChannelData(0);let m=0;for(let i=0;i<d.length;i++)m=Math.max(m,Math.abs(d[i]));if(m>0)for(let i=0;i<d.length;i++)d[i]*=0.95/m;return b;}
+// metallic click (slide, pump, shell) added at time 'at'
+function _click(d,sr,at,f,amp,dec=0.025){const fl=_svf(sr),i0=Math.floor(at*sr);for(let i=0;i<dec*6*sr&&i0+i<d.length;i++){const t=i/sr;const x=t<0.003?_rn():0;fl.s(x,f,0.08);d[i0+i]+=fl.bp*amp*Math.exp(-t/dec);}}
+// generic gunshot
+function _gun(o){return (d,sr)=>{
+    const fc=_svf(sr),fb=_svf(sr),ft=_svf(sr);let ph=0;
+    const J=1+(Math.random()-0.5)*0.12;
+    for(let i=0;i<d.length;i++){
+        const t=i/sr,n=_rn();let x=0;
+        if(t<o.crT){fc.s(n,3500,0.7);x+=fc.hp*o.cr*(1-t/o.crT);}
+        const bf=o.b0*Math.pow(o.b1/o.b0,Math.min(1,t/o.bS));
+        fb.s(n,bf*J,0.6);x+=fb.bp*o.bd*Math.exp(-t/o.bD)*Math.min(1,t/0.0008);
+        const f=o.t1+(o.t0-o.t1)*Math.exp(-t/o.tS);ph+=6.2832*f*J/sr;
+        x+=Math.sin(ph)*o.th*Math.exp(-t/o.tD)*Math.min(1,t/0.001);
+        ft.s(n,o.tF,0.9);x+=ft.lp*o.tl*Math.exp(-t/o.tlD);
+        d[i]=Math.tanh(x*o.dr);
+    }
+    if(o.clicks)for(const c of o.clicks)_click(d,sr,c[0],c[1]*J,c[2]);
+};}
+const _J=[];
+function initSfx(){
+    if(_sfxIn)return;
+    const comp=ac.createDynamicsCompressor();
+    comp.threshold.value=-16;comp.knee.value=6;comp.ratio.value=5;comp.attack.value=0.002;comp.release.value=0.16;
+    comp.connect(mvol);
+    _sfxIn=ac.createGain();_sfxIn.gain.value=1.6;_sfxIn.connect(comp);
+    // room reverb: 1.3s of decaying, darkening stereo noise as the impulse response
+    const sr=ac.sampleRate,L=Math.floor(1.3*sr),ir=ac.createBuffer(2,L,sr);
+    for(let c=0;c<2;c++){const d=ir.getChannelData(c),fl=_svf(sr);for(let i=0;i<L;i++){const t=i/sr;fl.s(_rn(),6000*Math.exp(-t*2.2)+300,0.9);d[i]=fl.lp*Math.exp(-t*4.2)*(i<sr*0.012?i/(sr*0.012):1);}}
+    const conv=ac.createConvolver();conv.buffer=ir;
+    const send=ac.createGain();send.gain.value=0.22;_sfxIn.connect(send);send.connect(conv);conv.connect(comp);
+    const V=(n,fn)=>Array.from({length:n},fn);
+    _J.push(()=>{SND.pistol=V(4,()=>_bake(0.5,_gun({crT:.004,cr:1,b0:4200,b1:900,bS:.05,bD:.035,bd:1.5,t0:190,t1:55,tS:.03,tD:.07,th:1,tF:700,tl:.1,tlD:.1,dr:2,clicks:[[.085,3600,.25],[.11,2400,.18]]})));});
+    _J.push(()=>{SND.shotgun=V(3,()=>_bake(0.9,_gun({crT:.006,cr:1.2,b0:6500,b1:550,bS:.12,bD:.05,bd:2,t0:130,t1:38,tS:.05,tD:.12,th:1.5,tF:480,tl:.18,tlD:.25,dr:2.4,clicks:[[.27,1900,.5],[.3,900,.35],[.36,2600,.55],[.39,1300,.35]]})));});
+    _J.push(()=>{SND.dshot=V(3,()=>_bake(1.1,(d,sr)=>{
+        _gun({crT:.007,cr:1.4,b0:6500,b1:450,bS:.14,bD:.06,bd:2.3,t0:110,t1:30,tS:.06,tD:.15,th:1.9,tF:420,tl:.22,tlD:.32,dr:2.6,clicks:[[.42,700,.6],[.47,2300,.4]]})(d,sr);
+        const e=new Float32Array(d.length);_gun({crT:.005,cr:1,b0:5000,b1:600,bS:.1,bD:.05,bd:1.6,t0:140,t1:40,tS:.05,tD:.1,th:1.2,tF:500,tl:.15,tlD:.25,dr:2.4})(e,sr);
+        const off=Math.floor(.009*sr);for(let i=d.length-1;i>=off;i--)d[i]=Math.tanh(d[i]+e[i-off]*0.8);
+    }));});
+    _J.push(()=>{SND.chain=V(5,()=>_bake(0.3,_gun({crT:.003,cr:.9,b0:5200,b1:1300,bS:.03,bD:.024,bd:1.3,t0:160,t1:65,tS:.02,tD:.045,th:.9,tF:900,tl:.07,tlD:.06,dr:2.2,clicks:[[.032,4200,.12]]})));});
+    _J.push(()=>{SND.rocket=V(2,()=>_bake(1.4,(d,sr)=>{
+        const fw=_svf(sr),fh=_svf(sr);let ph=0;
+        for(let i=0;i<d.length;i++){const t=i/sr,n=_rn();
+            const f=40+60*Math.exp(-t/.05);ph+=6.2832*f/sr;let x=Math.sin(ph)*1.1*Math.exp(-t/.12)*Math.min(1,t/.001);
+            const wf=t<.25?400*Math.pow(7,t/.25):2800*Math.exp(-(t-.25)*2.5)+300;
+            fw.s(n,wf,0.5);x+=fw.bp*1.6*Math.min(1,t/.02)*Math.exp(-t/.45);
+            fh.s(n,5000,0.8);x+=fh.hp*.25*Math.exp(-t/.7)*Math.min(1,t/.05);
+            if(t<.004)x+=_rn()*.8;
+            d[i]=Math.tanh(x*2.2);}
+        _click(d,sr,.0,1800,.4);
+    }));});
+    const zap=(f0,f1,sw,dec,sub,grit)=>(d,sr)=>{let ph=0,pm=0,ps=0;const fh=_svf(sr);
+        for(let i=0;i<d.length;i++){const t=i/sr,f=f1+(f0-f1)*Math.exp(-t/sw);pm+=6.2832*f*1.5/sr;ph+=6.2832*f/sr+Math.sin(pm)*0.9*Math.exp(-t/(sw*1.5))*0.2;ps+=6.2832*sub/sr;
+            let x=Math.sin(ph)*Math.exp(-t/dec)+Math.sin(ps)*.6*Math.exp(-t/(dec*1.4));
+            fh.s(_rn(),4000,0.7);x+=fh.hp*grit*Math.exp(-t/.012);
+            d[i]=Math.tanh(x*(1.8+grit))*Math.min(1,t/.0015);}};
+    _J.push(()=>{SND.laser=V(3,()=>_bake(0.22,zap(2400+Math.random()*600,320,.035,.06,95,.5)));});
+    _J.push(()=>{SND.rlaser=V(3,()=>_bake(0.3,zap(1100+Math.random()*300,120,.05,.09,55,1.2)));});
+    const hum=(base,bright)=>(d,sr)=>{const fl=_svf(sr);for(let i=0;i<d.length;i++){const t=i/sr;
+        let x=Math.tanh(Math.sin(6.2832*base*t)*3)*.5+Math.sin(6.2832*base*2*t)*.3+Math.sin(6.2832*base*3*t)*.15;
+        x*=0.75+0.25*Math.sin(6.2832*8*t);fl.s(_rn(),bright,0.4);x+=fl.bp*.5;d[i]=x;}};
+    _J.push(()=>{SND.laserHum=[_bake(1,hum(110,2600),.1)];});
+    _J.push(()=>{SND.rlaserHum=[_bake(1,hum(55,900),.1)];});
+    _J.push(()=>{SND.flame=[_bake(1.6,(d,sr)=>{const f1=_svf(sr),f2=_svf(sr),f3=_svf(sr);let m=0,mt=0;
+        for(let i=0;i<d.length;i++){const t=i/sr,n=_rn();if(i%400===0)mt=Math.random();m+=(mt-m)*0.0008;
+            f1.s(n,550+900*m,0.7);f2.s(n,180,0.5);let x=f1.lp*1.1+f2.bp*1.4;
+            if(Math.random()<45/sr)x+=_rn()*2;f3.s(x,6000,1);x=x*.8+f3.hp*.3;
+            d[i]=Math.tanh(x*1.6);}},.15)];});
+    _J.push(()=>{SND.ignite=[_bake(.5,(d,sr)=>{const f=_svf(sr);for(let i=0;i<d.length;i++){const t=i/sr;f.s(_rn(),200*Math.pow(16,Math.min(1,t/.12)),0.5);d[i]=Math.tanh(f.bp*2*Math.min(1,t/.03)*Math.exp(-t/.18));}_click(d,sr,0,3000,.5);})];});
+    const boom=(sz)=>(d,sr)=>{
+        const fb=_svf(sr),ft=_svf(sr),fc=_svf(sr);let ph=0;
+        for(let i=0;i<d.length;i++){const t=i/sr,n=_rn();let x=0;
+            if(t<.008){fc.s(n,3000,0.7);x+=fc.hp*1.3*(1-t/.008);}
+            fb.s(n,4200*Math.pow(250/4200,Math.min(1,t/(.3*sz))),0.55);x+=fb.bp*2*Math.exp(-t/(.18*sz))*Math.min(1,t/.0015);
+            const f=26+70*Math.exp(-t/(.07*sz));ph+=6.2832*f/sr;x+=Math.sin(ph)*1.8*Math.exp(-t/(.22*sz))*Math.min(1,t/.002);
+            ft.s(n,260,0.8);x+=ft.lp*1.1*Math.exp(-t/(.5*sz))*Math.min(1,t/.02);
+            if(t>.08&&t<.9*sz&&Math.random()<(60/sr)*Math.exp(-t*2))x+=_rn()*1.4;
+            d[i]=Math.tanh(x*2.2);}};
+    _J.push(()=>{SND.explode=V(3,()=>_bake(2,boom(1)));});
+    _J.push(()=>{SND.nuke=[_bake(5,(d,sr)=>{boom(2.6)(d,sr);const f=_svf(sr);let ph=0;
+        for(let i=0;i<d.length;i++){const t=i/sr;ph+=6.2832*(18+30*Math.exp(-t/.8))/sr;f.s(_rn(),110,0.7);d[i]=Math.tanh(d[i]+Math.sin(ph)*1.2*Math.exp(-t/1.8)+f.lp*3*Math.exp(-t/2.4)*Math.min(1,t/.2));}})];});
+    _J.push(()=>{SND.hit=V(4,()=>_bake(.2,(d,sr)=>{const f=_svf(sr);let ph=0;const J=0.8+Math.random()*0.4;
+        for(let i=0;i<d.length;i++){const t=i/sr;f.s(_rn(),1400*J*Math.exp(-t/.04)+250,0.6);ph+=6.2832*(80+160*Math.exp(-t/.02))*J/sr;
+            d[i]=Math.tanh((f.bp*1.6*Math.exp(-t/.035)+Math.sin(ph)*.9*Math.exp(-t/.05))*2*Math.min(1,t/.0008));}}));});
+    _J.push(()=>{SND.kill=V(3,()=>_bake(.6,(d,sr)=>{const f=_svf(sr),g=_svf(sr);let ph=0;
+        for(let i=0;i<d.length;i++){const t=i/sr,n=_rn();f.s(n,1500*Math.exp(-t/.08)+250,0.5);g.s(n,500+250*Math.sin(6.2832*24*t),0.25);
+            ph+=6.2832*(45+90*Math.exp(-t/.04))/sr;
+            d[i]=Math.tanh((f.bp*1.8*Math.exp(-t/.1)+g.bp*.9*Math.exp(-t/.18)*Math.min(1,t/.03)+Math.sin(ph)*1.2*Math.exp(-t/.14))*2.2*Math.min(1,t/.001));}}));});
+    _J.push(()=>{SND.ric=V(4,()=>_bake(.45,(d,sr)=>{const f0=2400+Math.random()*2200,fh=_svf(sr);let ph=0;
+        for(let i=0;i<d.length;i++){const t=i/sr,f=f0*(0.55+0.45*Math.exp(-t/.12))*(1+0.01*Math.sin(6.2832*30*t));ph+=6.2832*f/sr;
+            fh.s(_rn(),5000,0.7);d[i]=Math.sin(ph)*Math.exp(-t/.11)*Math.min(1,t/.004)*.7+fh.hp*Math.exp(-t/.004);}}));});
+    // bake the pistol and impacts now; the rest one per tick, so the first click does not freeze the game
+    const now=['SND.pistol','SND.hit','SND.kill','SND.ric','SND.explode'];
+    for(const k of now){const i=_J.findIndex(f=>f.toString().includes(k+'='));if(i>=0)_J.splice(i,1)[0]();}
+    const step=()=>{const f=_J.shift();if(f){f();setTimeout(step,30);}};setTimeout(step,200);
+}
+
+const _last={};
+function playS(name,gain=1,jit=0.06,minGap=0){
+    if(!_sfxIn||!SND[name])return null;
+    const now=ac.currentTime;
+    if(minGap&&now-(_last[name]||-1)<minGap)return null;
+    if(_voices>40&&gain<0.6)return null;            // voice cap: drop quiet stuff first
+    _last[name]=now;
+    const v=SND[name],src=ac.createBufferSource(),g=ac.createGain();
+    src.buffer=v[(Math.random()*v.length)|0];src.playbackRate.value=1+(Math.random()-0.5)*jit;
+    g.gain.value=gain;src.connect(g);g.connect(_sfxIn);
+    _voices++;src.onended=()=>{_voices--;g.disconnect();};
+    src.start();return src;
+}
+// looping sound kept alive while a weapon keeps firing; fades out ~0.1s after the last call
+const _loops={};
+function holdLoop(name,gain){
+    if(!_sfxIn)return false;
+    if(!SND[name])return false;
+    const L=_loops[name],now=performance.now();
+    if(L){L.t=now;return false;}
+    const src=ac.createBufferSource(),g=ac.createGain();
+    src.buffer=SND[name][0];src.loop=true;g.gain.setValueAtTime(0,ac.currentTime);g.gain.linearRampToValueAtTime(gain,ac.currentTime+0.04);
+    src.connect(g);g.connect(_sfxIn);src.start();
+    const l={src,g,t:now};_loops[name]=l;
+    l.iv=setInterval(()=>{if(performance.now()-l.t>110){clearInterval(l.iv);g.gain.setTargetAtTime(0,ac.currentTime,0.03);src.stop(ac.currentTime+0.2);delete _loops[name];}},40);
+    return true;
+}
 const sfx={
-    // Weapon shots — louder + thicker (added low-end bass thump to each)
-    shoot:()=>{noise(0.09,0.22);beep(450,0.04,'square',0.1);beep(110,0.08,'sawtooth',0.1);},
-    shotgun:()=>{noise(0.18,0.32);beep(120,0.12,'sawtooth',0.18);beep(55,0.18,'square',0.14);beep(1200,0.02,'square',0.08);},
-    chain:()=>{noise(0.05,0.18);beep(700,0.03,'square',0.08);beep(180,0.04,'sawtooth',0.07);},
-    rocket:()=>{noise(0.28,0.3);beep(70,0.4,'sawtooth',0.22);beep(40,0.45,'square',0.18);beep(180,0.08,'sawtooth',0.1);},
-    plasma:()=>{beep(1800,0.08,'sine',0.14);beep(2400,0.06,'sine',0.1);noise(0.05,0.08);},
-    bomb:()=>{noise(0.4,0.35);beep(45,0.5,'sawtooth',0.24);beep(25,0.6,'square',0.18);beep(160,0.1,'sawtooth',0.12);},
-    molotov:()=>{noise(0.3,0.22);beep(220,0.22,'sawtooth',0.12);beep(90,0.15,'sawtooth',0.1);},
-    laser:()=>{beep(1200,0.05,'sine',0.14);beep(1600,0.04,'sine',0.1);beep(140,0.04,'sawtooth',0.08);},
-    megabomb:()=>{noise(0.6,0.35);beep(28,0.7,'sawtooth',0.3);beep(18,0.8,'square',0.22);beep(100,0.2,'sawtooth',0.15);},
-    // Non-shot SFX — moderate boost
-    hit:()=>{noise(0.03,0.08);beep(350+Math.random()*150,0.03,'square',0.04);},
-    kill:()=>{noise(0.09,0.14);beep(150,0.1,'sawtooth',0.09);beep(80,0.12,'square',0.07);},
+    // weapons
+    shoot:()=>playS('pistol',0.75),
+    shotgun:()=>playS('shotgun',1),
+    dshot:()=>playS('dshot',1.1),
+    chain:()=>playS('chain',0.6,0.1),
+    rocket:()=>playS('rocket',0.9),
+    laser:()=>{holdLoop('laserHum',0.22);playS('laser',0.32,0.12,0.075);},
+    rlaser:()=>{holdLoop('rlaserHum',0.3);playS('rlaser',0.4,0.1,0.09);},
+    molotov:()=>{if(holdLoop('flame',0.55))playS('ignite',0.6);},
+    megabomb:()=>playS('nuke',1.2,0.02),
+    plasma:()=>playS('laser',0.4),
+    bomb:()=>playS('explode',1),
+    // impacts
+    hit:()=>playS('hit',0.4,0.1,0.035),
+    kill:()=>playS('kill',0.6,0.1,0.03),
+    explode:()=>playS('explode',0.85,0.12,0.045),
+    gib:()=>playS('explode',0.28,0.35,0.07),       // small burst on every kill (v1 played a full explosion)
+    ricochet:()=>playS('ric',0.2,0.15,0.05),
+    // the rest keep the v1 sounds
     pickup:()=>{beep(600,0.05,'sine',0.09);beep(900,0.05,'sine',0.07);},
     boss:()=>{noise(0.32,0.15);beep(60,0.32,'sawtooth',0.13);beep(40,0.38,'sawtooth',0.1);},
-    explode:()=>{noise(0.4,0.28);beep(55,0.35,'sawtooth',0.18);beep(28,0.45,'square',0.14);},
     dash:()=>{beep(500,0.04,'sine',0.06);beep(800,0.03,'sine',0.04);},
-    ricochet:()=>{noise(0.06,0.1);beep(3000+Math.random()*2000,0.03,'sine',0.04);beep(100+Math.random()*60,0.08,'sine',0.05);},
 };
 
 // ===== MUSIC (dynamic normal/boss) =====
@@ -1268,9 +1420,9 @@ const WEAP={
     3:{name:'CHAINGUN',rate:0.06,dmg:16,spd:34,spread:0.07,count:1,sz:0.1,color:0xe8d040,sfx:'chain',maxAmmo:150,rTime:1.1,ric:2},
     4:{name:'ROCKET',rate:0.5,dmg:150,spd:30,spread:0.008,count:1,sz:0.22,color:0xe03818,sfx:'rocket',maxAmmo:15,rTime:1.3,ric:0,expl:true,blast:7},
     5:{name:'PURPLE LASER',rate:0.04,dmg:34,spd:60,spread:0.005,count:1,sz:0.1,color:0xb040ff,sfx:'laser',maxAmmo:300,rTime:1.0,ric:0,laser:true},
-    6:{name:'DOUBLE SHOTGUN',rate:0.55,dmg:32,spd:26,spread:0.18,count:12,sz:0.11,color:0xff8030,sfx:'shotgun',maxAmmo:24,rTime:1.1,ric:1},
+    6:{name:'DOUBLE SHOTGUN',rate:0.55,dmg:32,spd:26,spread:0.18,count:12,sz:0.11,color:0xff8030,sfx:'dshot',maxAmmo:24,rTime:1.1,ric:1},
     7:{name:'FLAMETHROWER',rate:0.04,dmg:22,spd:26,spread:0.12,count:1,sz:0.22,color:0xff6020,sfx:'molotov',maxAmmo:400,rTime:1.4,ric:0,fireGround:true,life:0.9,gravity:true},
-    8:{name:'RED LASER',rate:0.03,dmg:68,spd:60,spread:0.006,count:1,sz:0.08,color:0xff2020,sfx:'laser',maxAmmo:250,rTime:0.9,ric:0,laser:true,flat:true},
+    8:{name:'RED LASER',rate:0.03,dmg:68,spd:60,spread:0.006,count:1,sz:0.08,color:0xff2020,sfx:'rlaser',maxAmmo:250,rTime:0.9,ric:0,laser:true,flat:true},
     9:{name:'NUKE',rate:5,dmg:99999,spd:1,spread:0,count:1,sz:1,color:0xffffff,sfx:'megabomb',maxAmmo:1,rTime:99,ric:0,nuke:true},
 };
 const WC=9;
@@ -2578,7 +2730,7 @@ function bloodExplosion(x,z,r){
 function killEn(e){
     e.alive=false;scene.remove(e.mesh);score+=e.sc*comboX;kills++;
     combo++;comboT=1.5;comboX=Math.min(10,1+Math.floor(combo/4));
-    bloodExplosion(e.x,e.z,e.r);sfx.kill();sfx.explode();
+    bloodExplosion(e.x,e.z,e.r);sfx.kill();sfx.gib();
     if(Math.random()<0.1){for(let w=2;w<=WC;w++){if(unlockedWeapons[w])ammo[w]=Math.min(WEAP[w].maxAmmo,ammo[w]+Math.ceil(WEAP[w].maxAmmo*0.03));}}
     // Life recovery proportional to difficulty (boss = full heal)
     if(e.boss&&!e.divided){
