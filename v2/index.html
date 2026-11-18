@@ -765,7 +765,7 @@ function applyTheme(i){
     hemiLight.color.setHex(th.sky);hemiLight.groundColor.setHex(th.ground);hemiLight.intensity=_hemiBase=th.hemi;
 }
 applyTheme(0);
-if(new URLSearchParams(location.search).has('debug')){window.__theme=applyTheme;window.__maze=i=>genMaze3D(i);window.__wep=i=>{unlockedWeapons[i]=true;pl.wep=i;};window.__god=()=>{pl.maxHp=pl.hp=1e6;};window.__spawn=(t,x,z)=>{const e=mkEnemy(t,x,z);e.spd=0;e.dmg=0;enemies.push(e);return e;};window.__boss=(i,x,z)=>{const e=mkBoss(i,x,z);e.spd=0;e.dmg=0;e.fRate=1e9;enemies.push(e);return e;};window.__look=(a,p)=>{pl.angle=a;pl.pitch=p||0;};window.__clear=()=>{enemies.forEach(e=>{if(e.mesh)scene.remove(e.mesh);});enemies.length=0;toSpawn=0;};Object.defineProperty(window,"__pl",{get:()=>pl});window.__en=()=>enemies;window.__snd=()=>SND;window.__sfx=()=>sfx;}
+if(new URLSearchParams(location.search).has('debug')){window.__theme=applyTheme;window.__maze=i=>genMaze3D(i);window.__wep=i=>{unlockedWeapons[i]=true;pl.wep=i;};window.__god=()=>{pl.maxHp=pl.hp=1e6;};window.__spawn=(t,x,z)=>{const e=mkEnemy(t,x,z);e.spd=0;e.dmg=0;enemies.push(e);return e;};window.__boss=(i,x,z)=>{const e=mkBoss(i,x,z);e.spd=0;e.dmg=0;e.fRate=1e9;enemies.push(e);return e;};window.__look=(a,p)=>{pl.angle=a;pl.pitch=p||0;};window.__clear=()=>{enemies.forEach(e=>{if(e.mesh)scene.remove(e.mesh);});enemies.length=0;toSpawn=0;};Object.defineProperty(window,"__pl",{get:()=>pl});window.__en=()=>enemies;window.__snd=()=>SND;window.__real=()=>REAL;window.__sfx=()=>sfx;}
 
 // [v2] segment vs padded wall box: entry t in [0,1], or -1
 function _segHit(x0,z0,x1,z1,w,pad){
@@ -1122,6 +1122,15 @@ function noise(d,v=0.1){if(!ac)return;const bs=ac.sampleRate*d,nb=ac.createBuffe
 // tanh saturation. All SFX go through a compressor (punch, no clipping) with a short room reverb on a send.
 let _sfxIn=null,_voices=0;
 const SND={};
+// Recorded sound effects (generated with an SFX model, trimmed and normalised offline) override the
+// synthesised ones of the same name as soon as they are decoded; the synth versions stay as fallback.
+const REAL={},_SFX_BASE=new URL('./assets/sfx/',import.meta.url).href;
+const SFX_FILES=['pistol','shotgun','dshot','chain','rocket','laser','hit','ric','explode','nuke','dImp','dSkull','dDemon','dCaco','dBaron','dBoss','flame.wav','rlaserLoop.wav'];
+function loadRealSfx(){
+    for(const f of SFX_FILES){const n=f.replace(/\..*/,''),file=f.includes('.')?f:f+'.mp3';
+        fetch(_SFX_BASE+file).then(r=>r.ok?r.arrayBuffer():Promise.reject()).then(b=>ac.decodeAudioData(b)).then(buf=>{REAL[n]=[buf];}).catch(()=>{});}
+}
+const _snd=n=>REAL[n]||SND[n];
 function _svf(sr){ // Chamberlin state-variable filter: call s(x,fc,damp), then read .lp/.bp/.hp
     const o={lp:0,bp:0,hp:0};
     o.s=(x,fc,q)=>{const f=2*Math.sin(Math.PI*Math.min(fc,sr/6.5)/sr);o.lp+=f*o.bp;o.hp=x-o.lp-q*o.bp;o.bp+=f*o.hp;return o;};
@@ -1160,6 +1169,7 @@ function _gun(o){return (d,sr)=>{
 const _J=[];
 function initSfx(){
     if(_sfxIn)return;
+    loadRealSfx();
     const comp=ac.createDynamicsCompressor();
     comp.threshold.value=-16;comp.knee.value=6;comp.ratio.value=5;comp.attack.value=0.002;comp.release.value=0.16;
     comp.connect(mvol);
@@ -1276,12 +1286,12 @@ function initSfx(){
 
 const _last={};
 function playS(name,gain=1,jit=0.06,minGap=0){
-    if(!_sfxIn||!SND[name])return null;
+    if(!_sfxIn||!_snd(name))return null;
     const now=ac.currentTime;
     if(minGap&&now-(_last[name]||-1)<minGap)return null;
     if(_voices>40&&gain<0.6)return null;            // voice cap: drop quiet stuff first
     _last[name]=now;
-    const v=SND[name],src=ac.createBufferSource(),g=ac.createGain();
+    const v=_snd(name),src=ac.createBufferSource(),g=ac.createGain();
     src.buffer=v[(Math.random()*v.length)|0];src.playbackRate.value=1+(Math.random()-0.5)*jit;
     g.gain.value=gain;src.connect(g);g.connect(_sfxIn);
     _voices++;src.onended=()=>{_voices--;g.disconnect();};
@@ -1291,11 +1301,11 @@ function playS(name,gain=1,jit=0.06,minGap=0){
 const _loops={};
 function holdLoop(name,gain){
     if(!_sfxIn)return false;
-    if(!SND[name])return false;
+    if(!_snd(name))return false;
     const L=_loops[name],now=performance.now();
     if(L){L.t=now;return false;}
     const src=ac.createBufferSource(),g=ac.createGain();
-    src.buffer=SND[name][0];src.loop=true;g.gain.setValueAtTime(0,ac.currentTime);g.gain.linearRampToValueAtTime(gain,ac.currentTime+0.04);
+    src.buffer=_snd(name)[0];src.loop=true;g.gain.setValueAtTime(0,ac.currentTime);g.gain.linearRampToValueAtTime(gain,ac.currentTime+0.04);
     src.connect(g);g.connect(_sfxIn);src.start();
     const l={src,g,t:now};_loops[name]=l;
     l.iv=setInterval(()=>{if(performance.now()-l.t>110){clearInterval(l.iv);g.gain.setTargetAtTime(0,ac.currentTime,0.03);src.stop(ac.currentTime+0.2);delete _loops[name];}},40);
@@ -1308,8 +1318,8 @@ const sfx={
     dshot:()=>playS('dshot',1.1),
     chain:()=>playS('chain',0.6,0.1),
     rocket:()=>playS('rocket',0.9),
-    laser:()=>{holdLoop('laserHum',0.22);playS('laser',0.32,0.12,0.075);},
-    rlaser:()=>{holdLoop('rlaserHum',0.3);playS('rlaser',0.4,0.1,0.09);},
+    laser:()=>{holdLoop('laserHum',REAL.laser?0.1:0.22);playS('laser',REAL.laser?0.45:0.32,0.12,0.075);},
+    rlaser:()=>{if(REAL.rlaserLoop)holdLoop('rlaserLoop',0.6);else{holdLoop('rlaserHum',0.3);playS('rlaser',0.4,0.1,0.09);}},
     molotov:()=>{if(holdLoop('flame',0.55))playS('ignite',0.6);},
     megabomb:()=>playS('nuke',1.2,0.02),
     plasma:()=>playS('laser',0.4),
@@ -1321,7 +1331,7 @@ const sfx={
     gib:()=>playS('explode',0.28,0.35,0.07),
     death:e=>{ // each monster type dies with its own cry over wet gore; bosses also blow up
         const k=e.boss?'dBoss':({imp:'dImp',skull:'dSkull',demon:'dDemon',caco:'dCaco',baron:'dBaron'})[e.type]||'dImp';
-        if(SND[k])playS(k,e.boss?1.2:0.8,0.14,0.05);else playS('kill',0.6);
+        if(_snd(k))playS(k,e.boss?1.2:0.8,0.14,0.05);else playS('kill',0.6);
         if(e.boss)playS('explode',0.9);
     },
     ricochet:()=>playS('ric',0.2,0.15,0.05),
