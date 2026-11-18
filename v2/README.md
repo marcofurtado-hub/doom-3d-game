@@ -18,6 +18,11 @@ What v2 adds, visuals only:
 - **End-of-the-world sky** over every place (the roofs are gone): a dome with a storm-cloud deck, red
   lightning veins and a glowing horizon, tinted per place, with lightning flashes every few seconds.
   Dark tendrils creep over every wall and pale spores drift in the air.
+- **Recorded sound effects** (`assets/sfx/`, 18 files, ~400 KB): every gun, explosion, the nuke, bullet hits,
+  ricochets and each monster type's death are real-sounding clips generated with an SFX model, cut to a single
+  shot, trimmed and peak-normalised offline. The flamethrower and red laser use seamless loops while firing.
+  They load in the background when audio starts and replace the synthesised versions below, which stay as
+  fallback (for example when the files cannot load).
 - **New weapon and impact sounds**, synthesised in layers instead of single beeps: a bright crack, a noise
   body that sweeps down, a pitch-dropping low thump for weight and a short room tail, then saturation.
   Pump and slide clicks on the shotguns and pistol; a launch whoosh for the rocket; a beam hum plus zaps for
