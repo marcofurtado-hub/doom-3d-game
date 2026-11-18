@@ -67,6 +67,19 @@ function brick(x, y, bw, bh, seed) {
 const DESIGNS = {
     // ---------------- OFFICE: stained carpet tiles, beige wall with blinds glowing red from outside
     office: {
+        // drop ceiling: grey tiles, every other one a fluorescent panel (a few dead or flickering red)
+        ceil(u, v, o) {
+            const x = P(u), y = P(v), tx = x >> 4, ty = y >> 4, bx = x & 15, by = y & 15;
+            if (bx === 0 || by === 0) { set(o, 70, 70, 74); return; }
+            const k = 0.9 + 0.1 * hash(x, y, 3);
+            set(o, 150 * k, 148 * k, 142 * k);
+            if (((tx + ty) & 1) === 0 && bx > 2 && bx < 14 && by > 4 && by < 12) {
+                const h = hash(tx, ty, 9);
+                if (h < 0.18) set(o, 40, 40, 44);                                   // dead tube
+                else { const r = h < 0.3; set(o, 230, r ? 120 : 236, r ? 120 : 240, 255, r ? 60 : 250, r ? 60 : 255); if ((by & 1) === 0) mul(o, 0.9); }
+            }
+            if (fbm(u, v, 3, 4, 61) > 0.68) mul(o, 0.55);                         // water stains
+        },
         floor(u, v, o) {
             const x = P(u), y = P(v), n = hash(x, y, 3), t = hash(x >> 4, y >> 4, 7);
             let k = 0.85 + 0.25 * n + 0.12 * t;
@@ -98,6 +111,15 @@ const DESIGNS = {
     },
     // ---------------- BUTCHER: checker tiles with blood, white wall tiles with drips, steel counters
     butcher: {
+        // white tiles, a steel pipe run and caged lamps with a sick red tint
+        ceil(u, v, o) {
+            const x = P(u), y = P(v);
+            if ((x & 7) === 0 || (y & 7) === 0) set(o, 110, 104, 100); else { const k = 0.85 + 0.15 * hash(x, y, 4); set(o, 196 * k, 192 * k, 184 * k); }
+            if (y >= 28 && y <= 33) { const k = y === 28 || y === 33 ? 0.55 : y === 29 ? 1.2 : 0.9; set(o, 120 * k, 124 * k, 130 * k); }
+            const dx = (x & 31) - 16, dy = y - 48;
+            if (Math.abs(dx) < 5 && Math.abs(dy) < 5) { if (Math.abs(dx) === 4 || Math.abs(dy) === 4 || dx === 0) set(o, 40, 40, 44); else set(o, 255, 170, 150, 255, 120, 100); }
+            if (fbm(u, v, 3, 4, 71) > 0.66) set(o, 110, 14, 16);
+        },
         floor(u, v, o) {
             const x = P(u), y = P(v), c = ((x >> 4) + (y >> 4)) & 1, n = hash(x, y, 2);
             let k = 0.9 + 0.12 * n;
@@ -126,6 +148,16 @@ const DESIGNS = {
     },
     // ---------------- BANK: marble checker, wood panelling under green wallpaper with gold trim
     bank: {
+        // dark wood coffers with gold trim; a lit rosette in every other coffer
+        ceil(u, v, o) {
+            const x = P(u), y = P(v), bx = x & 31, by = y & 31;
+            const e = Math.min(bx, 31 - bx, by, 31 - by);
+            if (e < 3) { const k = e === 0 ? 0.5 : 1; set(o, 200 * k, 156 * k, 50 * k); return; }
+            const k = (e < 6 ? 0.6 + 0.1 * e : 1.1) * (0.85 + 0.2 * hash(x, y >> 2, 6));
+            set(o, 70 * k, 38 * k, 22 * k);
+            const d = Math.hypot(bx - 15.5, by - 15.5);
+            if (((x >> 5) + (y >> 5)) & 1 && d < 5) { if (d < 3) set(o, 255, 220, 140, 255, 200, 110); else set(o, 220, 170, 60); }
+        },
         floor(u, v, o) {
             const x = P(u), y = P(v), c = ((x >> 5) + (y >> 5)) & 1;
             const vein = ridge(fbm(u, v, 4, 4, c ? 50 : 60), 9);
@@ -230,6 +262,15 @@ const DESIGNS = {
     },
     // ---------------- DUNGEON: flagstones, big mossy blocks with iron rings
     dungeon: {
+        // rough vault stones with roots hanging through
+        ceil(u, v, o) {
+            const x = P(u), y = P(v), k = brick(x, y, 32, 16, 9);
+            if (k === 0) { set(o, 16, 14, 14); return; }
+            set(o, 62 * k, 58 * k, 58 * k);
+            if (fbm(u, v, 3, 4, 33) > 0.58) set(o, 30 * k, 50 * k, 30 * k);
+            const r = ridge(fbm(u, v, 3, 4, 91), 22);
+            if (r > 0.8) set(o, 50, 34, 24);
+        },
         floor(u, v, o) {
             const x = P(u), y = P(v);
             const row = y >> 5, xo = (x + (row ? 16 : 0)) & 63, col = xo >> 5, bx = xo & 31, by = y & 31;
@@ -320,7 +361,7 @@ export function biomeTextures(id) {
         const d = DESIGNS[id], size = 64;
         const withVines = fn => (u, v, o) => { fn(u, v, o); vines(u, v, o); };
         const wall = bake(withVines(d.wall), size);
-        _cache.set(id, { floor: bake(d.floor, size), wall, inner: d.inner ? bake(d.inner, size) : wall });
+        _cache.set(id, { floor: bake(d.floor, size), wall, inner: d.inner ? bake(d.inner, size) : wall, ceil: d.ceil ? bake(d.ceil, size) : null });
     }
     return _cache.get(id);
 }
