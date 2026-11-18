@@ -25,6 +25,18 @@ What v2 adds, visuals only:
   hits, kills and ricochets. Each sound has several variants with slight pitch jitter. Everything goes through
   a compressor and a small room reverb. The sounds are baked once when audio starts (the pistol and impacts
   first, the rest spread over the next second), so each shot is a single buffer playback.
+- **Monster deaths sound different per type**: a synthesised cry (saw voice through vowel formants, falling
+  pitch, rasp and growl) over wet gore (squelch bursts, a low splat, bone cracks). Imp screech, flaming-skull
+  shriek and shatter, demon roar, cacodemon burst and gurgle, baron bellow with a body thud, and a double roar
+  plus explosion for bosses.
+- **Roofs indoors**: the office (drop ceiling with fluorescent panels, some dead), butcher shop (tiles, pipe,
+  caged lamps), bank (wood coffers with gold trim and lit rosettes) and dungeon (vault stones and roots) have
+  ceilings; the square and the forest stay open to the doomsday sky.
+- **Collision follows the furniture**: every obstacle has a height. Shots and laser beams fly over low pieces
+  (desks, counters, benches, car bonnets, fountain rim), the player can jump over them or stand on top, and
+  pieces made of parts collide as parts (fountain rim + column, bandstand floor + posts, car body + cabin,
+  desk + monitor, bench seat + backrest). Mirrored copies of a piece are flipped, so every desk's monitor faces
+  away from its partition.
 - **World-space wall UVs**, so bricks keep the same size on every wall instead of stretching.
 - **Gun detail pass**: a 16px worn-metal texture over the vertex colours plus extra voxels (vents, rivets,
   hazard stripes, indicator lights). Still 2 draw calls per gun.
