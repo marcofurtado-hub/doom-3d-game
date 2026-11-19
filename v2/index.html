@@ -758,6 +758,7 @@ function applyTheme(i){
     if(th.roof){ceilMat.color.setHex(0xffffff);setMat(ceilMat,tx.ceil,AW/4,AH/4,0x2a2420);} // faint self-light: a downward face only gets the dark ground tint
     _skyTint.setHex(th.tint);_sky.material.color.copy(_skyTint);
     buildProps(th);
+    setThemeMusic(((i%THEMES.length)+THEMES.length)%THEMES.length);
     _ambMat.color.setHex(th.amb.color);_ambMat.size=th.amb.size;_amb=th.amb;
     _themeFog=th.fog;
     scene.fog.color.setHex(th.fog);
@@ -765,7 +766,7 @@ function applyTheme(i){
     hemiLight.color.setHex(th.sky);hemiLight.groundColor.setHex(th.ground);hemiLight.intensity=_hemiBase=th.hemi;
 }
 applyTheme(0);
-if(new URLSearchParams(location.search).has('debug')){window.__theme=applyTheme;window.__maze=i=>genMaze3D(i);window.__wep=i=>{unlockedWeapons[i]=true;pl.wep=i;};window.__god=()=>{pl.maxHp=pl.hp=1e6;};window.__spawn=(t,x,z)=>{const e=mkEnemy(t,x,z);e.spd=0;e.dmg=0;enemies.push(e);return e;};window.__boss=(i,x,z)=>{const e=mkBoss(i,x,z);e.spd=0;e.dmg=0;e.fRate=1e9;enemies.push(e);return e;};window.__look=(a,p)=>{pl.angle=a;pl.pitch=p||0;};window.__clear=()=>{enemies.forEach(e=>{if(e.mesh)scene.remove(e.mesh);});enemies.length=0;toSpawn=0;};Object.defineProperty(window,"__pl",{get:()=>pl});window.__en=()=>enemies;window.__snd=()=>SND;window.__real=()=>REAL;window.__sfx=()=>sfx;}
+if(new URLSearchParams(location.search).has('debug')){window.__theme=applyTheme;window.__maze=i=>genMaze3D(i);window.__wep=i=>{unlockedWeapons[i]=true;pl.wep=i;};window.__god=()=>{pl.maxHp=pl.hp=1e6;};window.__spawn=(t,x,z)=>{const e=mkEnemy(t,x,z);e.spd=0;e.dmg=0;enemies.push(e);return e;};window.__boss=(i,x,z)=>{const e=mkBoss(i,x,z);e.spd=0;e.dmg=0;e.fRate=1e9;enemies.push(e);return e;};window.__look=(a,p)=>{pl.angle=a;pl.pitch=p||0;};window.__clear=()=>{enemies.forEach(e=>{if(e.mesh)scene.remove(e.mesh);});enemies.length=0;toSpawn=0;};Object.defineProperty(window,"__pl",{get:()=>pl});window.__en=()=>enemies;window.__snd=()=>SND;window.__real=()=>REAL;window.__mus=()=>_musEl;window.__sfx=()=>sfx;}
 
 // [v2] segment vs padded wall box: entry t in [0,1], or -1
 function _segHit(x0,z0,x1,z1,w,pad){
@@ -1125,10 +1126,12 @@ const SND={};
 // Recorded sound effects (generated with an SFX model, trimmed and normalised offline) override the
 // synthesised ones of the same name as soon as they are decoded; the synth versions stay as fallback.
 const REAL={},_SFX_BASE=new URL('./assets/sfx/',import.meta.url).href;
-const SFX_FILES=['pistol','shotgun','dshot','chain','rocket','laser','hit','ric','explode','nuke','dImp','dSkull','dDemon','dCaco','dBaron','dBoss','flame.wav','rlaserLoop.wav'];
+// variants per sound: files are <name>_1.mp3 .. <name>_N.mp3; a random take plays each time
+const SFX_SET={pistol:3,shotgun:3,dshot:3,chain:3,rocket:3,laser:3,hit:4,ric:2,explode:3,nuke:1,gSmall:3,gSkull:2,gBig:2,gCaco:1,gHuge:1};
 function loadRealSfx(){
-    for(const f of SFX_FILES){const n=f.replace(/\..*/,''),file=f.includes('.')?f:f+'.mp3';
-        fetch(_SFX_BASE+file).then(r=>r.ok?r.arrayBuffer():Promise.reject()).then(b=>ac.decodeAudioData(b)).then(buf=>{REAL[n]=[buf];}).catch(()=>{});}
+    const one=(file,n)=>fetch(_SFX_BASE+file).then(r=>r.ok?r.arrayBuffer():Promise.reject()).then(b=>ac.decodeAudioData(b)).then(buf=>{(REAL[n]=REAL[n]||[]).push(buf);}).catch(()=>{});
+    for(const [n,c] of Object.entries(SFX_SET))for(let k=1;k<=c;k++)one(n+'_'+k+'.mp3',n);
+    one('flame.wav','flame');one('rlaserLoop.wav','rlaserLoop');
 }
 const _snd=n=>REAL[n]||SND[n];
 function _svf(sr){ // Chamberlin state-variable filter: call s(x,fc,damp), then read .lp/.bp/.hp
@@ -1285,15 +1288,15 @@ function initSfx(){
 }
 
 const _last={};
-function playS(name,gain=1,jit=0.06,minGap=0){
+function playS(name,gain=1,jit=0.06,minGap=0,rate=1){
     if(!_sfxIn||!_snd(name))return null;
     const now=ac.currentTime;
     if(minGap&&now-(_last[name]||-1)<minGap)return null;
     if(_voices>40&&gain<0.6)return null;            // voice cap: drop quiet stuff first
     _last[name]=now;
     const v=_snd(name),src=ac.createBufferSource(),g=ac.createGain();
-    src.buffer=v[(Math.random()*v.length)|0];src.playbackRate.value=1+(Math.random()-0.5)*jit;
-    g.gain.value=gain;src.connect(g);g.connect(_sfxIn);
+    src.buffer=v[(Math.random()*v.length)|0];src.playbackRate.value=rate*(1+(Math.random()-0.5)*jit);
+    g.gain.value=gain*(0.85+Math.random()*0.3);src.connect(g);g.connect(_sfxIn);
     _voices++;src.onended=()=>{_voices--;g.disconnect();};
     src.start();return src;
 }
@@ -1313,11 +1316,11 @@ function holdLoop(name,gain){
 }
 const sfx={
     // weapons
-    shoot:()=>playS('pistol',0.75),
-    shotgun:()=>playS('shotgun',1),
-    dshot:()=>playS('dshot',1.1),
-    chain:()=>playS('chain',0.6,0.1),
-    rocket:()=>playS('rocket',0.9),
+    shoot:()=>playS('pistol',0.75,0.12),
+    shotgun:()=>playS('shotgun',1,0.1),
+    dshot:()=>playS('dshot',1.1,0.1),
+    chain:()=>playS('chain',0.6,0.16),
+    rocket:()=>playS('rocket',0.9,0.12),
     laser:()=>{holdLoop('laserHum',REAL.laser?0.1:0.22);playS('laser',REAL.laser?0.45:0.32,0.12,0.075);},
     rlaser:()=>{if(REAL.rlaserLoop)holdLoop('rlaserLoop',0.6);else{holdLoop('rlaserHum',0.3);playS('rlaser',0.4,0.1,0.09);}},
     molotov:()=>{if(holdLoop('flame',0.55))playS('ignite',0.6);},
@@ -1325,15 +1328,18 @@ const sfx={
     plasma:()=>playS('laser',0.4),
     bomb:()=>playS('explode',1),
     // impacts
-    hit:()=>playS('hit',0.4,0.1,0.035),
+    hit:()=>playS('hit',0.45,0.25,0.035),
     kill:()=>playS('kill',0.6,0.1,0.03),
     explode:()=>playS('explode',0.85,0.12,0.045),
     gib:()=>playS('explode',0.28,0.35,0.07),
-    death:e=>{ // each monster type dies with its own cry over wet gore; bosses also blow up
-        const k=e.boss?'dBoss':({imp:'dImp',skull:'dSkull',demon:'dDemon',caco:'dCaco',baron:'dBaron'})[e.type]||'dImp';
-        if(_snd(k))playS(k,e.boss?1.2:0.8,0.14,0.05);else playS('kill',0.6);
-        if(e.boss)playS('explode',0.9);
+    death:e=>{ // no voices: bullets tearing the body apart. Gore set and pitch depend on the monster's size
+        const D={imp:[['gSmall'],1.12],skull:[['gSkull'],1.05],demon:[['gBig','gSmall'],0.95],caco:[['gCaco','gBig'],0.9],baron:[['gHuge','gBig'],0.8]};
+        const [set,r]=e.boss?[['gHuge','gBig'],0.72]:(D[e.type]||D.imp);
+        const k=set[(Math.random()*set.length)|0];
+        if(_snd(k))playS(k,e.boss?1.2:0.8,0.22,0.04,r);else playS('kill',0.6,0.2);
+        if(e.boss)playS('explode',0.9,0.1,0,0.85);
     },
+
     ricochet:()=>playS('ric',0.2,0.15,0.05),
     // the rest keep the v1 sounds
     pickup:()=>{beep(600,0.05,'sine',0.09);beep(900,0.05,'sine',0.07);},
@@ -1342,7 +1348,7 @@ const sfx={
 };
 
 // ===== MUSIC (dynamic normal/boss) =====
-let musInt=null,musStep=0,musMode='normal';
+var musInt=null,musStep=0,musMode='normal'; // var: applyTheme(0) checks musInt before this line runs
 function setMusMode(m){musMode=m;}
 // === HEAVY ROCK MUSIC ===
 // Palm-muted chugging over E root with G/A/B accents (pentatonic driven).
@@ -1386,6 +1392,7 @@ const bLead=[ // Boss pentatonic D minor
 
 function startMusic(){
     if(musInt||!ac)return;musStep=0;
+    if(startFileMusic()){musInt=-1;return;}
     const mg=ac.createGain();mg.gain.value=0.14;mg.connect(musicBus||ac.destination);
     // Heavily saturated guitar bus — tanh*8 for aggressive clip
     const guitar=ac.createWaveShaper();const curve=new Float32Array(256);
@@ -1493,7 +1500,23 @@ function startMusic(){
         musStep++;
     },ST);
 }
-function stopMusic(){if(musInt){clearInterval(musInt);musInt=null;}}
+function stopMusic(){if(musInt){clearInterval(musInt);musInt=null;}if(_musEl)_musEl.pause();}
+// [v2] recorded music: a looping track per place (6 places, the butcher shop shares the dungeon's metal track)
+const _MUS_BASE=new URL('./assets/music/',import.meta.url).href,MUS_TRACK=[0,5,2,3,4,5];
+var _musEl=null,_musOK=true,_musIdx=0; // var: applyTheme(0) runs before this line
+function _musFile(){return _MUS_BASE+'theme'+MUS_TRACK[_musIdx%MUS_TRACK.length]+'.mp3';}
+function startFileMusic(){
+    if(!_musOK||!ac)return false;
+    if(!_musEl){
+        _musEl=new Audio();_musEl.loop=true;_musEl.preload='auto';_musEl.crossOrigin='anonymous';
+        const g=ac.createGain();g.gain.value=1.6;ac.createMediaElementSource(_musEl).connect(g);g.connect(musicBus);
+        setInterval(()=>{if(musInt===-1&&_musEl.paused&&state==='play')_musEl.play().catch(()=>{});},1000); // resume after a track switch
+        _musEl.onerror=()=>{_musOK=false;if(musInt===-1){musInt=null;if(state!=='menu')startMusic();}};
+    }
+    const f=_musFile();if(_musEl.src!==f){_musEl.src=f;_musEl.load();}
+    _musEl.play().catch(()=>{});return true;
+}
+function setThemeMusic(i){_musIdx=i;if(musInt===-1&&_musEl&&_musEl.src!==_musFile())startFileMusic();}
 
 // ===== GAME DATA =====
 const WEAP={
